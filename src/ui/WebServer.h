@@ -17,6 +17,8 @@ public:
   static bool isStarted();
   /** Retourne le port d'écoute HTTP. */
   static uint16_t port();
+  /** Indique si un client s'est authentifié avec succès. */
+  static bool hasAuthenticatedClient();
   /** Boucle d'entretien (aucune action nécessaire actuellement). */
   static void loop() {}
 private:
@@ -24,6 +26,7 @@ private:
   static AsyncWebSocket _wsLogs;
   static int _logClients;
   static bool _started;
+  static bool _hasAuthenticatedClient;
   static void logCallback(const String& line);
   static bool checkAuth(AsyncWebServerRequest *request);
 };

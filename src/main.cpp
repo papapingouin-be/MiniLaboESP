@@ -112,7 +112,13 @@ static WiFiStatusInfo setupWiFi() {
 
   String apConfigured = net["ap"]["ssid"].as<String>();
   g_apPass = net["ap"]["password"].as<String>();
-  if (g_apPass.length() < 8) g_apPass = DEFAULT_AP_PASS;
+  if (g_apPass.length() > 0 && g_apPass.length() < 8) {
+    // Une passphrase WPA doit comporter au moins 8 caractères.
+    // Si l'utilisateur souhaite un réseau ouvert, il suffit de laisser
+    // le champ vide. Toute autre valeur trop courte retombe sur la valeur
+    // par défaut afin de garantir un AP fonctionnel.
+    g_apPass = DEFAULT_AP_PASS;
+  }
   int configuredChannel = net["ap"]["channel"].as<int>();
   if (configuredChannel < 1 || configuredChannel > 13) {
     configuredChannel = 6;
@@ -216,15 +222,17 @@ static bool startAccessPoint() {
   WiFi.softAPdisconnect(false);
   delay(50);
   WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet);
+  const char* passphrase = g_apPass.length() == 0 ? nullptr : g_apPass.c_str();
+
   bool started = WiFi.softAP(g_apSSID.c_str(),
-                             g_apPass.c_str(),
+                             passphrase,
                              g_apChannel,
                              g_apHidden,
                              g_apMaxClients);
   if (!started) {
     delay(50);
     started = WiFi.softAP(g_apSSID.c_str(),
-                          g_apPass.c_str(),
+                          passphrase,
                           g_apChannel,
                           g_apHidden,
                           g_apMaxClients);
@@ -266,7 +274,7 @@ static String computeWifiDetail() {
       channel = g_apChannel;
     }
     int clients = WiFi.softAPgetStationNum();
-    const char* security = (g_apPass.length() >= 8) ? "WPA2" : "OPEN";
+    const char* security = (g_apPass.length() == 0) ? "OPEN" : "WPA2";
     String ssid = shortenLabel(g_apSSID, 12);
     char buf[64];
     snprintf(buf, sizeof(buf), "%s C%d %s Cl:%d",

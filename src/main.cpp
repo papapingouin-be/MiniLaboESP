@@ -52,6 +52,7 @@ static String g_staPass;
 static String g_apSSID;
 static String g_apPass;
 static unsigned long g_lastReconnectAttempt = 0;
+static const unsigned long STA_RETRY_INTERVAL_MS = 60000;  // 60 s de délai entre deux tentatives
 static bool g_webAvailable = false;
 static uint16_t g_webPort = 0;
 static bool g_udpEnabled = false;
@@ -133,7 +134,6 @@ static WiFiStatusInfo setupWiFi() {
     info.ready = false;
     info.apMode = true;
     if (g_staConfigured) {
-      WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
       g_lastReconnectAttempt = millis();
     }
     return info;
@@ -262,10 +262,18 @@ static void maintainWiFi() {
     updateStatusDisplay(false);
   }
 
-  if (g_staConfigured && !staConnected && now - g_lastReconnectAttempt >= 15000) {
-    Logger::info("NET", "maintainWiFi", "Retrying STA connection");
-    WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
-    g_lastReconnectAttempt = now;
+  if (g_staConfigured && !staConnected) {
+    if (apClients) {
+      // Un client est connecté sur l'AP : on diffère toute nouvelle tentative
+      // pour éviter les coupures du SSID.
+      g_lastReconnectAttempt = now;
+    } else if (now - g_lastReconnectAttempt >= STA_RETRY_INTERVAL_MS) {
+      Logger::info("NET", "maintainWiFi", "Retrying STA connection");
+      WiFi.mode(WIFI_AP_STA);
+      WiFi.softAP(g_apSSID.c_str(), g_apPass.c_str());
+      WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
+      g_lastReconnectAttempt = now;
+    }
   }
 }
 

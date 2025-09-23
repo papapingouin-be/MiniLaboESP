@@ -146,7 +146,20 @@ static WiFiStatusInfo setupWiFi() {
       info.line = String("WiFi: STA ") + WiFi.localIP().toString();
       info.detail = computeWifiDetail();
       info.ready = true;
-      info.apMode = (WiFi.getMode() == WIFI_AP_STA);
+
+      // Conserve un point d'accès de secours même en mode STA afin
+      // de garder une porte d'entrée pour la configuration.
+      WiFi.mode(WIFI_AP_STA);
+      bool apStarted = startAccessPoint();
+      if (apStarted) {
+        Logger::info("NET", "setupWiFi",
+                     String("Fallback AP ready, SSID ") + g_apSSID +
+                     " ch " + g_apChannel);
+      } else {
+        Logger::warn("NET", "setupWiFi", "Failed to start fallback AP");
+        WiFi.mode(WIFI_STA);
+      }
+      info.apMode = apStarted;
       return info;
     }
     Logger::warn("NET", "setupWiFi", "STA connect failed, enabling AP");
@@ -198,7 +211,9 @@ static String byteToUpperHex(uint8_t value) {
 }
 
 static bool startAccessPoint() {
-  WiFi.softAPdisconnect(true);
+  // Ne pas couper complètement le Wi-Fi afin d'éviter de déconnecter
+  // une éventuelle liaison STA déjà établie.
+  WiFi.softAPdisconnect(false);
   delay(50);
   WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet);
   bool started = WiFi.softAP(g_apSSID.c_str(),

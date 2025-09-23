@@ -39,6 +39,40 @@
 static const char* DEFAULT_AP_SSID    = "MiniLabo";
 static const char* DEFAULT_AP_PASS    = "12345678";
 
+struct WiFiStatusInfo {
+  String line;
+  bool ready;
+  bool apMode;
+};
+
+static WiFiStatusInfo g_wifiInfo = {String("WiFi: INIT"), false, false};
+static bool g_staConfigured = false;
+static String g_staSSID;
+static String g_staPass;
+static String g_apSSID;
+static String g_apPass;
+static unsigned long g_lastReconnectAttempt = 0;
+static bool g_webAvailable = false;
+static uint16_t g_webPort = 0;
+static bool g_udpEnabled = false;
+static bool g_udpRunning = false;
+static uint16_t g_udpPort = 0;
+static int g_pinCode = 0;
+static unsigned long g_lastStatusRefresh = 0;
+static unsigned long g_lastIoRefresh = 0;
+static bool g_pinShown = false;
+
+enum class DisplayState { STATUS, PIN, IO };
+static DisplayState g_displayState = DisplayState::STATUS;
+
+static WiFiStatusInfo setupWiFi();
+static void maintainWiFi();
+static void updateStatusDisplay(bool force = false);
+static void updateDisplayState();
+static String computeWebStatus();
+static String computeUdpStatus();
+static String describeStaStatus(wl_status_t status);
+
 /**
  * Configuration réseau initiale.
  *
@@ -47,39 +81,204 @@ static const char* DEFAULT_AP_PASS    = "12345678";
  * l'appareil bascule automatiquement en point d'accès (AP) afin de
  * rester accessible pour la configuration initiale.
  */
-static String setupWiFi() {
+static WiFiStatusInfo setupWiFi() {
+  WiFiStatusInfo info = {String("WiFi: INIT"), false, false};
   auto& net = ConfigStore::doc("network");
   String mode = net["mode"].as<String>();
-  if (mode == "sta") {
-    const char* ssid = net["sta"]["ssid"].as<const char*>();
-    const char* pass = net["sta"]["password"].as<const char*>();
+  bool staRequested = (mode == "sta");
+  if (net["sta"].containsKey("enabled")) {
+    staRequested = staRequested || net["sta"]["enabled"].as<bool>();
+  }
+  const char* staSsid = net["sta"]["ssid"].as<const char*>();
+  const char* staPass = net["sta"]["password"].as<const char*>();
+  if (!staSsid) staSsid = "";
+  if (!staPass) staPass = "";
+  g_staConfigured = staRequested && strlen(staSsid) > 0;
+  g_staSSID = staSsid;
+  g_staPass = staPass;
+
+  g_apSSID = net["ap"]["ssid"].as<String>();
+  g_apPass = net["ap"]["password"].as<String>();
+  if (g_apSSID.length() == 0) g_apSSID = DEFAULT_AP_SSID;
+  if (g_apPass.length() < 8) g_apPass = DEFAULT_AP_PASS;
+
+  if (g_staConfigured) {
     WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, pass);
-    Logger::info("NET", "setupWiFi", String("Connecting to ") + ssid);
+    WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
+    g_lastReconnectAttempt = millis();
+    Logger::info("NET", "setupWiFi", String("Connecting to ") + g_staSSID);
     unsigned long start = millis();
     // Tentative de connexion pendant 10 secondes
     while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
-      delay(500);
+      delay(200);
       yield();
     }
     if (WiFi.status() == WL_CONNECTED) {
       Logger::info("NET", "setupWiFi", String("Connected, IP ") + WiFi.localIP().toString());
-      return String("WiFi: STA ") + WiFi.localIP().toString();
+      info.line = String("WiFi: STA ") + WiFi.localIP().toString();
+      info.ready = true;
+      info.apMode = (WiFi.getMode() == WIFI_AP_STA);
+      return info;
     }
-    Logger::warn("NET", "setupWiFi", "STA connect failed, falling back to AP");
+    Logger::warn("NET", "setupWiFi", "STA connect failed, enabling AP");
   }
-  // Mode AP par défaut si la connexion STA échoue ou si mode != sta
-  String ssid = net["ap"]["ssid"].as<String>();
-  String pass = net["ap"]["password"].as<String>();
-  if (ssid.length() == 0) ssid = DEFAULT_AP_SSID;
-  if (pass.length() < 8) pass = DEFAULT_AP_PASS;
-  WiFi.mode(WIFI_AP);
-  if (WiFi.softAP(ssid.c_str(), pass.c_str())) {
-    Logger::info("NET", "setupWiFi", String("AP started, SSID ") + ssid);
-    return String("WiFi: AP ") + ssid;
+
+  WiFi.mode(g_staConfigured ? WIFI_AP_STA : WIFI_AP);
+  if (WiFi.softAP(g_apSSID.c_str(), g_apPass.c_str())) {
+    Logger::info("NET", "setupWiFi", String("AP started, SSID ") + g_apSSID);
+    info.line = String("WiFi: AP ") + g_apSSID;
+    info.ready = false;
+    info.apMode = true;
+    if (g_staConfigured) {
+      WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
+      g_lastReconnectAttempt = millis();
+    }
+    return info;
   }
   Logger::error("NET", "setupWiFi", "Failed to start AP");
-  return String("WiFi: ERROR");
+  info.line = String("WiFi: ERROR");
+  info.ready = false;
+  info.apMode = false;
+  g_staConfigured = false;
+  return info;
+}
+
+static String describeStaStatus(wl_status_t status) {
+  switch (status) {
+    case WL_NO_SSID_AVAIL:   return String("WiFi: STA no SSID");
+    case WL_CONNECT_FAILED:  return String("WiFi: STA failed");
+    case WL_WRONG_PASSWORD:  return String("WiFi: wrong pass");
+    case WL_CONNECTION_LOST: return String("WiFi: STA lost");
+    case WL_DISCONNECTED:    return String("WiFi: STA disc");
+    case WL_IDLE_STATUS:     return String("WiFi: STA idle");
+    default:                 return String("WiFi: STA ...");
+  }
+}
+
+static String computeWebStatus() {
+  if (g_webAvailable) {
+    return String("Web: ON :") + g_webPort;
+  }
+  return String("Web: ERROR");
+}
+
+static String computeUdpStatus() {
+  if (!g_udpEnabled) {
+    return String("UDP: OFF");
+  }
+  if (g_udpRunning) {
+    return String("UDP: ON :") + g_udpPort;
+  }
+  return String("UDP: ERROR");
+}
+
+static void updateStatusDisplay(bool force) {
+  unsigned long now = millis();
+  if (!force && now - g_lastStatusRefresh < 1000) {
+    return;
+  }
+  g_lastStatusRefresh = now;
+
+  String wifiLine = g_wifiInfo.line;
+  if (g_wifiInfo.apMode) {
+    wifiLine += String(" (") + WiFi.softAPgetStationNum() + ")";
+  }
+  String webLine = computeWebStatus();
+  String udpLine = computeUdpStatus();
+
+  static String prevWifi;
+  static String prevWeb;
+  static String prevUdp;
+
+  if (force || wifiLine != prevWifi || webLine != prevWeb || udpLine != prevUdp) {
+    OledPin::showStatus(wifiLine, webLine, udpLine);
+    prevWifi = wifiLine;
+    prevWeb = webLine;
+    prevUdp = udpLine;
+  }
+}
+
+static void maintainWiFi() {
+  unsigned long now = millis();
+  bool staConnected = WiFi.status() == WL_CONNECTED;
+  bool apActive = WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA;
+  bool apClients = apActive && WiFi.softAPgetStationNum() > 0;
+  bool networkReady = staConnected || apClients;
+
+  if (!staConnected && !apActive) {
+    WiFi.mode(g_staConfigured ? WIFI_AP_STA : WIFI_AP);
+    if (WiFi.softAP(g_apSSID.c_str(), g_apPass.c_str())) {
+      Logger::info("NET", "maintainWiFi", String("AP restarted, SSID ") + g_apSSID);
+      apActive = true;
+    }
+  }
+
+  String line;
+  if (staConnected) {
+    line = String("WiFi: STA ") + WiFi.localIP().toString();
+  } else if (apClients) {
+    line = String("WiFi: AP ") + g_apSSID;
+  } else if (g_staConfigured) {
+    line = describeStaStatus(WiFi.status());
+  } else if (apActive) {
+    line = String("WiFi: AP ") + g_apSSID;
+  } else {
+    line = String("WiFi: OFF");
+  }
+
+  bool changed = (line != g_wifiInfo.line) || (g_wifiInfo.apMode != apActive) || (g_wifiInfo.ready != networkReady);
+  g_wifiInfo.line = line;
+  g_wifiInfo.apMode = apActive;
+  g_wifiInfo.ready = networkReady;
+
+  if (changed) {
+    updateStatusDisplay(true);
+  } else {
+    updateStatusDisplay(false);
+  }
+
+  if (g_staConfigured && !staConnected && now - g_lastReconnectAttempt >= 15000) {
+    Logger::info("NET", "maintainWiFi", "Retrying STA connection");
+    WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
+    g_lastReconnectAttempt = now;
+  }
+}
+
+static void updateDisplayState() {
+  if (!g_wifiInfo.ready) {
+    if (g_displayState != DisplayState::STATUS) {
+      g_displayState = DisplayState::STATUS;
+      g_pinShown = false;
+      updateStatusDisplay(true);
+    }
+    return;
+  }
+
+  if (g_displayState == DisplayState::STATUS) {
+    g_displayState = DisplayState::PIN;
+    if (!g_pinShown) {
+      OledPin::showPIN(g_pinCode);
+      g_pinShown = true;
+    }
+    return;
+  }
+
+  if (g_displayState == DisplayState::PIN) {
+    if (WebServer::hasAuthenticatedClient()) {
+      g_displayState = DisplayState::IO;
+      g_lastIoRefresh = 0;
+    }
+    return;
+  }
+
+  if (g_displayState == DisplayState::IO) {
+    unsigned long now = millis();
+    if (now - g_lastIoRefresh >= 1000) {
+      auto ios = IORegistry::list();
+      OledPin::showIOValues(ios);
+      g_lastIoRefresh = now;
+    }
+  }
 }
 
 void setup() {
@@ -98,7 +297,7 @@ void setup() {
   ConfigStore::begin();
 
   // Setup WiFi (STA ou AP avec fallback)
-  String wifiStatus = setupWiFi();
+  g_wifiInfo = setupWiFi();
 
   // Initialisation de l'afficheur OLED
   OledPin::begin();
@@ -111,27 +310,23 @@ void setup() {
 
   // Démarre le serveur web et ses routes
   bool webStarted = WebServer::begin();
+  g_webAvailable = webStarted && WebServer::isStarted();
+  g_webPort = WebServer::port();
 
   // Démarre le serveur UDP pour diffusion/écoute
-  bool udpRunning = UDPServer::begin();
-
-  String webStatus = webStarted && WebServer::isStarted()
-      ? String("Web: ON :") + WebServer::port()
-      : String("Web: ERROR");
-  String udpStatus;
-  if (!UDPServer::isEnabled()) {
-    udpStatus = "UDP: OFF";
-  } else if (udpRunning) {
-    udpStatus = String("UDP: ON :") + UDPServer::port();
-  } else {
-    udpStatus = "UDP: ERROR";
-  }
+  g_udpRunning = UDPServer::begin();
+  g_udpEnabled = UDPServer::isEnabled();
+  g_udpPort = UDPServer::port();
 
   auto& general = ConfigStore::doc("general");
-  int pin = general["pin"].as<int>();
-  OledPin::showStatus(wifiStatus, webStatus, udpStatus);
-  delay(2000);
-  OledPin::showPIN(pin);
+  g_pinCode = general["pin"].as<int>();
+
+  g_displayState = DisplayState::STATUS;
+  g_pinShown = false;
+  g_lastStatusRefresh = 0;
+  g_lastIoRefresh = 0;
+
+  updateStatusDisplay(true);
 
   Logger::info("SYS", "setup", "System initialised");
 }
@@ -147,6 +342,8 @@ void loop() {
   FuncGen::loop();
   WebServer::loop();
   UDPServer::loop();
+  maintainWiFi();
+  updateDisplayState();
   // Yield pour éviter le watchdog
   yield();
 }

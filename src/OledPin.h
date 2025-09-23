@@ -7,6 +7,9 @@
 
 #include <Arduino.h>
 #include <U8g2lib.h>
+#include <vector>
+
+class IOBase;
 
 namespace OledPin {
   /** Initialise l'écran OLED (SSD1306 128x64 I2C). */
@@ -15,4 +18,6 @@ namespace OledPin {
   void showStatus(const String& wifi, const String& web, const String& udp);
   /** Affiche le code PIN à l'écran. */
   void showPIN(int pin);
+  /** Affiche un aperçu des IO après authentification. */
+  void showIOValues(const std::vector<IOBase*>& ios);
 }

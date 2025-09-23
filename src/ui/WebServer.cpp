@@ -18,9 +18,11 @@ AsyncWebServer WebServer::_server(80);
 AsyncWebSocket WebServer::_wsLogs("/ws/logs");
 int WebServer::_logClients = 0;
 bool WebServer::_started = false;
+bool WebServer::_hasAuthenticatedClient = false;
 
 bool WebServer::begin() {
   _started = false;
+  _hasAuthenticatedClient = false;
   // Initialise les appareils (multimÃƒÂ¨tre, oscilloscope, gÃƒÂ©nÃƒÂ©rateur)
   DMM::begin();
   Scope::begin();
@@ -63,6 +65,7 @@ bool WebServer::begin() {
       int stored = gdoc["pin"].as<int>();
       if (pinVal == stored) {
         // Auth ok : dÃƒÂ©finir cookie
+        _hasAuthenticatedClient = true;
         AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"success\":true}");
         response->addHeader("Set-Cookie", String("mlpin=1; Path=/"));
         request->send(response);
@@ -234,6 +237,10 @@ bool WebServer::isStarted() {
 
 uint16_t WebServer::port() {
   return 80;
+}
+
+bool WebServer::hasAuthenticatedClient() {
+  return _hasAuthenticatedClient;
 }
 
 bool WebServer::checkAuth(AsyncWebServerRequest *request) {

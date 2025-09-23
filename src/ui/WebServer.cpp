@@ -1,6 +1,6 @@
-/**
+﻿/**
  * @file WebServer.cpp
- * @brief Implémentation du serveur web asynchrone MiniLabo.
+ * @brief ImplÃƒÂ©mentation du serveur web asynchrone MiniLabo.
  */
 
 #include "WebServer.h"
@@ -13,18 +13,18 @@
 
 #include <ArduinoJson.h>
 
-// Déclaration des membres statiques
+// DÃƒÂ©claration des membres statiques
 AsyncWebServer WebServer::_server(80);
 AsyncWebSocket WebServer::_wsLogs("/ws/logs");
 int WebServer::_logClients = 0;
 
 void WebServer::begin() {
-  // Initialise les appareils (multimètre, oscilloscope, générateur)
+  // Initialise les appareils (multimÃƒÂ¨tre, oscilloscope, gÃƒÂ©nÃƒÂ©rateur)
   DMM::begin();
   Scope::begin();
   FuncGen::begin();
 
-  // Initialise le callback de log pour diffusion en temps réel
+  // Initialise le callback de log pour diffusion en temps rÃƒÂ©el
   Logger::setLogCallback(logCallback);
 
   // Gestion des WebSockets
@@ -49,7 +49,7 @@ void WebServer::begin() {
     // Lire le corps JSON
     if (request->hasArg("body")) {
       String body = request->arg("body");
-      DynamicJsonDocument doc(256);
+      JsonDocument doc;
       DeserializationError err = deserializeJson(doc, body);
       if (err) {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -60,7 +60,7 @@ void WebServer::begin() {
       auto& gdoc = ConfigStore::doc("general");
       int stored = gdoc["pin"].as<int>();
       if (pinVal == stored) {
-        // Auth ok : définir cookie
+        // Auth ok : dÃƒÂ©finir cookie
         AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"success\":true}");
         response->addHeader("Set-Cookie", String("mlpin=1; Path=/"));
         request->send(response);
@@ -76,7 +76,7 @@ void WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    DynamicJsonDocument doc(1024);
+    JsonDocument doc;
     JsonArray arr = doc.to<JsonArray>();
     auto list = IORegistry::list();
     for (auto io : list) {
@@ -95,8 +95,8 @@ void WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    DMM::loop(); // mise à jour rapide
-    DynamicJsonDocument doc(512);
+    DMM::loop(); // mise ÃƒÂ  jour rapide
+    JsonDocument doc;
     JsonObject obj = doc.to<JsonObject>();
     DMM::values(obj);
     String out;
@@ -110,9 +110,9 @@ void WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    // Mise à jour de l'oscilloscope
+    // Mise ÃƒÂ  jour de l'oscilloscope
     Scope::loop();
-    DynamicJsonDocument doc(2048);
+    JsonDocument doc;
     JsonObject obj = doc.to<JsonObject>();
     Scope::toJson(obj);
     String out;
@@ -131,7 +131,7 @@ void WebServer::begin() {
       return;
     }
     String body = request->arg("body");
-    DynamicJsonDocument doc(256);
+    JsonDocument doc;
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
@@ -156,14 +156,14 @@ void WebServer::begin() {
       lines = request->getParam("n")->value().toInt();
     }
     String result = Logger::tail(lines);
-    DynamicJsonDocument doc(2048);
+    JsonDocument doc;
     doc["lines"] = result;
     String out;
     serializeJson(doc, out);
     request->send(200, "application/json", out);
   });
 
-  // Route générique pour /api/config/<area>
+  // Route gÃƒÂ©nÃƒÂ©rique pour /api/config/<area>
   _server.on("", HTTP_ANY, [](AsyncWebServerRequest *request){
     String url = request->url();
     if (!url.startsWith("/api/config/")) {
@@ -174,9 +174,9 @@ void WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    // extraire l'area après /api/config/
+    // extraire l'area aprÃƒÂ¨s /api/config/
     String area = url.substring(String("/api/config/").length());
-    // Vérifier que c'est une zone connue
+    // VÃƒÂ©rifier que c'est une zone connue
     bool exists = false;
     static const char* areas[] = {"general","network","io","dmm","scope","funcgen","math"};
     for (auto a : areas) { if (area == a) { exists = true; break; } }
@@ -186,7 +186,7 @@ void WebServer::begin() {
     }
     if (request->method() == HTTP_GET) {
       // Retourner le document
-      DynamicJsonDocument &cfg = ConfigStore::doc(area);
+      JsonDocument &cfg = ConfigStore::doc(area);
       String out;
       serializeJson(cfg, out);
       request->send(200, "application/json", out);
@@ -196,18 +196,17 @@ void WebServer::begin() {
         return;
       }
       String body = request->arg("body");
-      DynamicJsonDocument doc(2048);
+      JsonDocument doc;
       if (deserializeJson(doc, body)) {
         request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
         return;
       }
-      // Remplace entièrement la configuration de la zone
-      DynamicJsonDocument &cfg = ConfigStore::doc(area);
+      // Remplace entiÃƒÂ¨rement la configuration de la zone
+      JsonDocument &cfg = ConfigStore::doc(area);
       cfg.clear();
-      cfg.garbageCollect();
       cfg = doc;
       ConfigStore::requestSave(area);
-      // Réinitialiser les modules concernés
+      // RÃƒÂ©initialiser les modules concernÃƒÂ©s
       if (area == "io") {
         IORegistry::begin();
       } else if (area == "dmm") {
@@ -223,14 +222,14 @@ void WebServer::begin() {
     }
   });
 
-  // Démarre le serveur
+  // DÃƒÂ©marre le serveur
   _server.begin();
   Logger::info("WS", "begin", "Web server started on port 80");
 }
 
 bool WebServer::checkAuth(AsyncWebServerRequest *request) {
-  // Vérifie la présence du cookie 'mlpin=1'.  Sans cookie, on autorise
-  // l'accès aux endpoints publics (ex. index.html).  Les appels API
+  // VÃƒÂ©rifie la prÃƒÂ©sence du cookie 'mlpin=1'.  Sans cookie, on autorise
+  // l'accÃƒÂ¨s aux endpoints publics (ex. index.html).  Les appels API
   // exigent l'authentification via ce cookie.
   if (!request->hasHeader("Cookie")) return false;
   String cookie = request->header("Cookie");

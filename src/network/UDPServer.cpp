@@ -1,12 +1,13 @@
-/**
+﻿/**
  * @file UDPServer.cpp
- * @brief Implémentation du serveur UDP MiniLabo.
+ * @brief ImplÃ©mentation du serveur UDP MiniLabo.
  */
 
 #include "UDPServer.h"
 #include "core/ConfigStore.h"
 #include "core/Logger.h"
 #include "devices/DMM.h"
+#include "devices/FuncGen.h"
 
 #include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
@@ -22,36 +23,36 @@ namespace {
   static const unsigned long EMIT_INTERVAL_MS = 1000UL;
 
   /**
-   * Lit la configuration réseau UDP dans network.json.  Les clés
+   * Lit la configuration rÃ©seau UDP dans network.json.  Les clÃ©s
    * suivantes sont optionnelles :
-   * - udp_port (int) : port local d'écoute (par défaut 50000)
-   * - udp_dest (string) : adresse IP de destination (par défaut
+   * - udp_port (int) : port local d'Ã©coute (par dÃ©faut 50000)
+   * - udp_dest (string) : adresse IP de destination (par dÃ©faut
    *   "255.255.255.255" pour broadcast)
-   * - udp_dest_port (int) : port de destination (par défaut 50000)
-   * - udp_enabled (bool) : active le serveur UDP (par défaut false)
-   * - udp_emit (bool) : active l'envoi périodique de données (par
-   *   défaut false)
+   * - udp_dest_port (int) : port de destination (par dÃ©faut 50000)
+   * - udp_enabled (bool) : active le serveur UDP (par dÃ©faut false)
+   * - udp_emit (bool) : active l'envoi pÃ©riodique de donnÃ©es (par
+   *   dÃ©faut false)
    */
   void loadConfig() {
     auto &net = ConfigStore::doc("network");
-    if (net.containsKey("udp_port")) {
+    if (!net["udp_port"].isNull()) {
       _port = net["udp_port"].as<uint16_t>();
     }
-    if (net.containsKey("udp_dest_port")) {
+    if (!net["udp_dest_port"].isNull()) {
       _destPort = net["udp_dest_port"].as<uint16_t>();
     } else {
       _destPort = _port;
     }
-    if (net.containsKey("udp_dest")) {
+    if (!net["udp_dest"].isNull()) {
       const char *addr = net["udp_dest"].as<const char*>();
       _destAddr.fromString(addr);
     }
-    if (net.containsKey("udp_enabled")) {
+    if (!net["udp_enabled"].isNull()) {
       _enabled = net["udp_enabled"].as<bool>();
     } else {
       _enabled = false;
     }
-    if (net.containsKey("udp_emit")) {
+    if (!net["udp_emit"].isNull()) {
       _emitEnabled = net["udp_emit"].as<bool>();
     } else {
       _emitEnabled = false;
@@ -59,8 +60,8 @@ namespace {
   }
 
   /**
-   * Envoie un paquet JSON contenant les valeurs du multimètre sur le
-   * port de destination.  Ce paquet a la structure suivante :
+   * Envoie un paquet JSON contenant les valeurs du multimÃ¨tre sur le
+   * port de destination.  Ce paquet a la structure suivanteÂ :
    * {
    *   "type": "dmm",
    *   "ts": <timestamp_ms>,
@@ -68,11 +69,11 @@ namespace {
    * }
    */
   void emitDMMValues() {
-    DynamicJsonDocument doc(512);
+    JsonDocument doc;
     doc["type"] = "dmm";
     doc["ts"] = millis();
     JsonObject vals = doc["values"].to<JsonObject>();
-    // Mise à jour des valeurs avant émission
+    // Mise Ã  jour des valeurs avant Ã©mission
     DMM::loop();
     DMM::values(vals);
     String json;
@@ -102,7 +103,7 @@ void begin() {
 
 void loop() {
   if (!_enabled) return;
-  // Réception des paquets
+  // RÃ©ception des paquets
   int packetSize = _udp.parsePacket();
   if (packetSize > 0) {
     // Lecture du paquet
@@ -113,13 +114,13 @@ void loop() {
       data += c;
     }
     // Tentative de parsing JSON
-    DynamicJsonDocument doc(256);
+    JsonDocument doc;
     DeserializationError err = deserializeJson(doc, data);
     if (!err) {
-      // Commande reconnue : on peut implémenter des actions
+      // Commande reconnue : on peut implÃ©menter des actions
       const char* type = doc["type"].as<const char*>();
       if (type) {
-        // Exemple : mise à jour du générateur de fonctions
+        // Exemple : mise Ã  jour du gÃ©nÃ©rateur de fonctions
         if (strcmp(type, "funcgen") == 0) {
           const char* target = doc["target"].as<const char*>();
           float freq = doc["freq"].as<float>();
@@ -130,9 +131,9 @@ void loop() {
         }
       }
     }
-    // On pourrait renvoyer un ack ou une réponse selon la commande
+    // On pourrait renvoyer un ack ou une rÃ©ponse selon la commande
   }
-  // Émission périodique de valeurs
+  // Ã‰mission pÃ©riodique de valeurs
   if (_emitEnabled) {
     unsigned long now = millis();
     if (now - _lastEmit >= EMIT_INTERVAL_MS) {

@@ -47,7 +47,7 @@ static const char* DEFAULT_AP_PASS    = "12345678";
  * l'appareil bascule automatiquement en point d'accès (AP) afin de
  * rester accessible pour la configuration initiale.
  */
-static void setupWiFi() {
+static String setupWiFi() {
   auto& net = ConfigStore::doc("network");
   String mode = net["mode"].as<String>();
   if (mode == "sta") {
@@ -64,7 +64,7 @@ static void setupWiFi() {
     }
     if (WiFi.status() == WL_CONNECTED) {
       Logger::info("NET", "setupWiFi", String("Connected, IP ") + WiFi.localIP().toString());
-      return;
+      return String("WiFi: STA ") + WiFi.localIP().toString();
     }
     Logger::warn("NET", "setupWiFi", "STA connect failed, falling back to AP");
   }
@@ -74,8 +74,12 @@ static void setupWiFi() {
   if (ssid.length() == 0) ssid = DEFAULT_AP_SSID;
   if (pass.length() < 8) pass = DEFAULT_AP_PASS;
   WiFi.mode(WIFI_AP);
-  WiFi.softAP(ssid.c_str(), pass.c_str());
-  Logger::info("NET", "setupWiFi", String("AP started, SSID ") + ssid);
+  if (WiFi.softAP(ssid.c_str(), pass.c_str())) {
+    Logger::info("NET", "setupWiFi", String("AP started, SSID ") + ssid);
+    return String("WiFi: AP ") + ssid;
+  }
+  Logger::error("NET", "setupWiFi", "Failed to start AP");
+  return String("WiFi: ERROR");
 }
 
 void setup() {
@@ -94,15 +98,10 @@ void setup() {
   ConfigStore::begin();
 
   // Setup WiFi (STA ou AP avec fallback)
-  setupWiFi();
+  String wifiStatus = setupWiFi();
 
-  // Initialisation de l'afficheur OLED pour afficher le PIN
-  {
-    auto& general = ConfigStore::doc("general");
-    int pin = general["pin"].as<int>();
-    OledPin::begin();
-    OledPin::showPIN(pin);
-  }
+  // Initialisation de l'afficheur OLED
+  OledPin::begin();
 
   // Initialise le système de journalisation
   Logger::begin();
@@ -111,10 +110,28 @@ void setup() {
   IORegistry::begin();
 
   // Démarre le serveur web et ses routes
-  WebServer::begin();
+  bool webStarted = WebServer::begin();
 
   // Démarre le serveur UDP pour diffusion/écoute
-  UDPServer::begin();
+  bool udpRunning = UDPServer::begin();
+
+  String webStatus = webStarted && WebServer::isStarted()
+      ? String("Web: ON :") + WebServer::port()
+      : String("Web: ERROR");
+  String udpStatus;
+  if (!UDPServer::isEnabled()) {
+    udpStatus = "UDP: OFF";
+  } else if (udpRunning) {
+    udpStatus = String("UDP: ON :") + UDPServer::port();
+  } else {
+    udpStatus = "UDP: ERROR";
+  }
+
+  auto& general = ConfigStore::doc("general");
+  int pin = general["pin"].as<int>();
+  OledPin::showStatus(wifiStatus, webStatus, udpStatus);
+  delay(2000);
+  OledPin::showPIN(pin);
 
   Logger::info("SYS", "setup", "System initialised");
 }

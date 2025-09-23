@@ -18,6 +18,7 @@ namespace {
   static uint16_t _destPort = 50000;
   static IPAddress _destAddr = IPAddress(255, 255, 255, 255);
   static bool _enabled = false;
+  static bool _running = false;
   static bool _emitEnabled = false;
   static unsigned long _lastEmit = 0;
   static const unsigned long EMIT_INTERVAL_MS = 1000UL;
@@ -87,18 +88,21 @@ namespace {
 
 namespace UDPServer {
 
-void begin() {
+bool begin() {
   // Charger la configuration
   loadConfig();
+  _running = false;
   if (!_enabled) {
     Logger::info("UDP", "begin", "UDP disabled in config");
-    return;
+    return false;
   }
   if (!_udp.begin(_port)) {
     Logger::error("UDP", "begin", String("Failed to start UDP on port ") + _port);
-    return;
+    return false;
   }
   Logger::info("UDP", "begin", String("UDP server listening on port ") + _port);
+  _running = true;
+  return true;
 }
 
 void loop() {
@@ -145,6 +149,14 @@ void loop() {
 
 void setEmitEnabled(bool enable) {
   _emitEnabled = enable;
+}
+
+bool isEnabled() {
+  return _enabled;
+}
+
+uint16_t port() {
+  return _port;
 }
 
 } // namespace UDPServer

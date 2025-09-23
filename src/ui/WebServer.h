@@ -12,13 +12,18 @@
 class WebServer {
 public:
   /** Initialise et démarre le serveur web (routes REST, websockets). */
-  static void begin();
+  static bool begin();
+  /** Indique si le serveur web est démarré. */
+  static bool isStarted();
+  /** Retourne le port d'écoute HTTP. */
+  static uint16_t port();
   /** Boucle d'entretien (aucune action nécessaire actuellement). */
   static void loop() {}
 private:
   static AsyncWebServer _server;
   static AsyncWebSocket _wsLogs;
   static int _logClients;
+  static bool _started;
   static void logCallback(const String& line);
   static bool checkAuth(AsyncWebServerRequest *request);
 };

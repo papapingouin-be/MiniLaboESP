@@ -24,7 +24,7 @@ namespace UDPServer {
    *  l'initialisation de ConfigStore.  En cas d'échec d'ouverture,
    *  une ligne de log est émise mais l'application continue.
    */
-  void begin();
+  bool begin();
 
   /** Boucle de traitement périodique.  Gère la réception de
    *  messages entrants et émet des données toutes les `emit_interval` ms.
@@ -36,5 +36,11 @@ namespace UDPServer {
    *  false, aucune donnée n'est envoyée mais la réception reste
    *  active. */
   void setEmitEnabled(bool enable);
+
+  /** Indique si la fonctionnalité UDP est activée dans la configuration. */
+  bool isEnabled();
+
+  /** Retourne le port local utilisé pour l'écoute UDP. */
+  uint16_t port();
 
 } // namespace UDPServer

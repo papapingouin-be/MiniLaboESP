@@ -17,8 +17,10 @@
 AsyncWebServer WebServer::_server(80);
 AsyncWebSocket WebServer::_wsLogs("/ws/logs");
 int WebServer::_logClients = 0;
+bool WebServer::_started = false;
 
-void WebServer::begin() {
+bool WebServer::begin() {
+  _started = false;
   // Initialise les appareils (multimÃƒÂ¨tre, oscilloscope, gÃƒÂ©nÃƒÂ©rateur)
   DMM::begin();
   Scope::begin();
@@ -222,6 +224,16 @@ void WebServer::begin() {
   // DÃƒÂ©marre le serveur
   _server.begin();
   Logger::info("WS", "begin", "Web server started on port 80");
+  _started = true;
+  return true;
+}
+
+bool WebServer::isStarted() {
+  return _started;
+}
+
+uint16_t WebServer::port() {
+  return 80;
 }
 
 bool WebServer::checkAuth(AsyncWebServerRequest *request) {

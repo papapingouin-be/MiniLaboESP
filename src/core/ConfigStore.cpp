@@ -1,6 +1,6 @@
-/**
+﻿/**
  * @file ConfigStore.cpp
- * @brief Implémentation de la gestion centralisée des fichiers de
+ * @brief ImplÃ©mentation de la gestion centralisÃ©e des fichiers de
  * configuration JSON.
  */
 
@@ -10,26 +10,26 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 
-// Définition des constantes statiques
+// DÃ©finition des constantes statiques
 std::map<String, ConfigStore::AreaState> ConfigStore::_areas;
 unsigned long ConfigStore::_lastSave = 0;
 const unsigned long ConfigStore::DEBOUNCE_MS   = 1000UL;
 const unsigned long ConfigStore::MIN_PERIOD_MS = 2000UL;
 
 void ConfigStore::begin() {
-  // Initialise la liste des zones et leurs fichiers associés
-  const struct { const char *area; const char *file; size_t capacity; } areas[] = {
-    {"general",  "/configuration/general.json",  1024},
-    {"network",  "/configuration/network.json",  1024},
-    {"io",       "/configuration/io.json",       2048},
-    {"dmm",      "/configuration/dmm.json",      2048},
-    {"scope",    "/configuration/scope.json",    2048},
-    {"funcgen",  "/configuration/funcgen.json",  1024},
-    {"math",     "/configuration/math.json",     2048}
+  // Initialise la liste des zones et leurs fichiers associÃ©s
+  const struct { const char *area; const char *file; } areas[] = {
+    {"general",  "/configuration/general.json"},
+    {"network",  "/configuration/network.json"},
+    {"io",       "/configuration/io.json"},
+    {"dmm",      "/configuration/dmm.json"},
+    {"scope",    "/configuration/scope.json"},
+    {"funcgen",  "/configuration/funcgen.json"},
+    {"math",     "/configuration/math.json"}
   };
 
   for (const auto &def : areas) {
-    DynamicJsonDocument *doc = new DynamicJsonDocument(def.capacity);
+    JsonDocument* doc = new JsonDocument();
     AreaState state;
     state.filename = def.file;
     state.document = doc;
@@ -40,7 +40,7 @@ void ConfigStore::begin() {
   }
 }
 
-DynamicJsonDocument& ConfigStore::doc(const String& area) {
+JsonDocument& ConfigStore::doc(const String& area) {
   return *(_areas[area].document);
 }
 
@@ -54,7 +54,7 @@ void ConfigStore::requestSave(const String& area) {
 
 void ConfigStore::loop() {
   unsigned long now = millis();
-  // Vérifie toutes les zones pour lesquelles une sauvegarde est demandée
+  // VÃ©rifie toutes les zones pour lesquelles une sauvegarde est demandÃ©e
   for (auto &kv : _areas) {
     AreaState &s = kv.second;
     if (s.dirty) {
@@ -75,8 +75,8 @@ void ConfigStore::loadArea(const String& area) {
   File f = LittleFS.open(s.filename, "r");
   if (!f) {
     Logger::warn("CFG", "loadArea", String("File not found, using defaults: ") + s.filename);
-    // Définition des valeurs par défaut minimalistes
-    // Général
+    // DÃ©finition des valeurs par dÃ©faut minimalistes
+    // GÃ©nÃ©ral
     if (area == "general") {
       s.document->clear();
       (*s.document)["pin"] = 1234;
@@ -117,7 +117,7 @@ void ConfigStore::loadArea(const String& area) {
     }
     return;
   }
-  // Désérialisation du JSON
+  // DÃ©sÃ©rialisation du JSON
   DeserializationError err = deserializeJson(*s.document, f);
   if (err) {
     Logger::error("CFG", "loadArea", String("Failed to parse ") + s.filename + ": " + err.c_str());
@@ -133,7 +133,7 @@ bool ConfigStore::saveArea(const String& area) {
   AreaState &s = it->second;
   String tmpName = s.filename + String(".tmp");
   {
-    // Écrire dans un fichier temporaire
+    // Ã‰crire dans un fichier temporaire
     File f = LittleFS.open(tmpName, "w");
     if (!f) {
       Logger::error("CFG", "saveArea", String("Failed to open tmp for ") + tmpName);

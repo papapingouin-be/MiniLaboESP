@@ -1,26 +1,27 @@
-/**
+﻿/**
  * @file DMM.h
- * @brief Multimètre virtuel gérant plusieurs canaux de mesure.
+ * @brief MultimÃ¨tre virtuel gÃ©rant plusieurs canaux de mesure.
  *
- * Le multimètre lit des valeurs brutes sur des IO référencées et
+ * Le multimÃ¨tre lit des valeurs brutes sur des IO rÃ©fÃ©rencÃ©es et
  * applique une conversion simple en tension DC.  Les autres modes
- * (RMS, fréquence, courant) sont à implémenter ultérieurement.  Les
- * valeurs lissées sont retournées sous forme de chaîne formatée.
+ * (RMS, frÃ©quence, courant) sont Ã  implÃ©menter ultÃ©rieurement.  Les
+ * valeurs lissÃ©es sont retournÃ©es sous forme de chaÃ®ne formatÃ©e.
  */
 
 #pragma once
 
 #include <Arduino.h>
 #include <vector>
+#include <ArduinoJson.h>
 #include "core/IORegistry.h"
 
 class DMM {
 public:
-  /** Initialise les canaux du multimètre à partir de la config. */
+  /** Initialise les canaux du multimÃ¨tre Ã  partir de la config. */
   static void begin();
   /** Effectue l'acquisition et le filtrage des mesures. */
   static void loop();
-  /** Retourne l'ensemble des valeurs formatées pour l'API REST. */
+  /** Retourne l'ensemble des valeurs formatÃ©es pour l'API REST. */
   static void values(JsonObject& out);
 private:
   struct Channel {

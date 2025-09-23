@@ -41,16 +41,23 @@ static const char* DEFAULT_AP_PASS    = "12345678";
 
 struct WiFiStatusInfo {
   String line;
+  String detail;
   bool ready;
   bool apMode;
 };
 
-static WiFiStatusInfo g_wifiInfo = {String("WiFi: INIT"), false, false};
+static WiFiStatusInfo g_wifiInfo = {String("WiFi: INIT"), String("WiFi init"), false, false};
 static bool g_staConfigured = false;
 static String g_staSSID;
 static String g_staPass;
 static String g_apSSID;
 static String g_apPass;
+static uint8_t g_apChannel = 6;
+static bool g_apHidden = false;
+static uint8_t g_apMaxClients = 4;
+static IPAddress g_apIp(192, 168, 4, 1);
+static IPAddress g_apGateway(192, 168, 4, 1);
+static IPAddress g_apSubnet(255, 255, 255, 0);
 static unsigned long g_lastReconnectAttempt = 0;
 static const unsigned long STA_RETRY_INTERVAL_MS = 60000;  // 60 s de délai entre deux tentatives
 static bool g_webAvailable = false;
@@ -75,6 +82,10 @@ static String computeUdpStatus();
 static String describeStaStatus(wl_status_t status);
 static String computeApSSID(const String& configured);
 static String byteToUpperHex(uint8_t value);
+static bool startAccessPoint();
+static String computeWifiDetail();
+static String describeEncryptionType(uint8_t enc);
+static String shortenLabel(const String& text, uint8_t maxLen = 12);
 
 /**
  * Configuration réseau initiale.
@@ -85,7 +96,7 @@ static String byteToUpperHex(uint8_t value);
  * rester accessible pour la configuration initiale.
  */
 static WiFiStatusInfo setupWiFi() {
-  WiFiStatusInfo info = {String("WiFi: INIT"), false, false};
+  WiFiStatusInfo info = {String("WiFi: INIT"), String("Initialisation"), false, false};
   auto& net = ConfigStore::doc("network");
   String mode = net["mode"].as<String>();
   bool staRequested = (mode == "sta");
@@ -103,6 +114,21 @@ static WiFiStatusInfo setupWiFi() {
   String apConfigured = net["ap"]["ssid"].as<String>();
   g_apPass = net["ap"]["password"].as<String>();
   if (g_apPass.length() < 8) g_apPass = DEFAULT_AP_PASS;
+  int configuredChannel = net["ap"]["channel"].as<int>();
+  if (configuredChannel < 1 || configuredChannel > 13) {
+    configuredChannel = 6;
+  }
+  g_apChannel = static_cast<uint8_t>(configuredChannel);
+  g_apHidden = net["ap"]["hidden"].as<bool>();
+  int maxClients = net["ap"]["max_clients"].as<int>();
+  if (maxClients < 1 || maxClients > 8) {
+    maxClients = 4;
+  }
+  g_apMaxClients = static_cast<uint8_t>(maxClients);
+
+  WiFi.persistent(false);
+  WiFi.disconnect(true);
+  WiFi.softAPdisconnect(true);
 
   if (g_staConfigured) {
     WiFi.mode(WIFI_STA);
@@ -119,6 +145,7 @@ static WiFiStatusInfo setupWiFi() {
       g_apSSID = computeApSSID(apConfigured);
       Logger::info("NET", "setupWiFi", String("Connected, IP ") + WiFi.localIP().toString());
       info.line = String("WiFi: STA ") + WiFi.localIP().toString();
+      info.detail = computeWifiDetail();
       info.ready = true;
       info.apMode = (WiFi.getMode() == WIFI_AP_STA);
       return info;
@@ -128,9 +155,11 @@ static WiFiStatusInfo setupWiFi() {
 
   WiFi.mode(g_staConfigured ? WIFI_AP_STA : WIFI_AP);
   g_apSSID = computeApSSID(apConfigured);
-  if (WiFi.softAP(g_apSSID.c_str(), g_apPass.c_str())) {
-    Logger::info("NET", "setupWiFi", String("AP started, SSID ") + g_apSSID);
+  if (startAccessPoint()) {
+    Logger::info("NET", "setupWiFi",
+                 String("AP started, SSID ") + g_apSSID + " ch " + g_apChannel);
     info.line = String("WiFi: AP ") + g_apSSID;
+    info.detail = computeWifiDetail();
     info.ready = false;
     info.apMode = true;
     if (g_staConfigured) {
@@ -140,6 +169,7 @@ static WiFiStatusInfo setupWiFi() {
   }
   Logger::error("NET", "setupWiFi", "Failed to start AP");
   info.line = String("WiFi: ERROR");
+  info.detail = String("AP init failed");
   info.ready = false;
   info.apMode = false;
   g_staConfigured = false;
@@ -166,6 +196,99 @@ static String byteToUpperHex(uint8_t value) {
     hex = "0" + hex;
   }
   return hex;
+}
+
+static bool startAccessPoint() {
+  WiFi.softAPdisconnect(true);
+  delay(50);
+  WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet);
+  bool started = WiFi.softAP(g_apSSID.c_str(),
+                             g_apPass.c_str(),
+                             g_apChannel,
+                             g_apHidden,
+                             g_apMaxClients);
+  if (!started) {
+    delay(50);
+    started = WiFi.softAP(g_apSSID.c_str(),
+                          g_apPass.c_str(),
+                          g_apChannel,
+                          g_apHidden,
+                          g_apMaxClients);
+  }
+  if (started) {
+    delay(50);
+  }
+  return started;
+}
+
+static String shortenLabel(const String& text, uint8_t maxLen) {
+  String trimmed = text;
+  trimmed.trim();
+  if (maxLen < 2) {
+    maxLen = 2;
+  }
+  if (trimmed.length() <= maxLen) {
+    return trimmed;
+  }
+  return trimmed.substring(0, maxLen - 1) + String("…");
+}
+
+static String describeEncryptionType(uint8_t enc) {
+#ifdef ENC_TYPE_NONE
+  if (enc == ENC_TYPE_NONE) return String("OPEN");
+#endif
+#ifdef ENC_TYPE_WEP
+  if (enc == ENC_TYPE_WEP) return String("WEP");
+#endif
+#ifdef ENC_TYPE_TKIP
+  if (enc == ENC_TYPE_TKIP) return String("WPA");
+#endif
+#ifdef ENC_TYPE_CCMP
+  if (enc == ENC_TYPE_CCMP) return String("WPA2");
+#endif
+#ifdef ENC_TYPE_AUTO
+  if (enc == ENC_TYPE_AUTO) return String("AUTO");
+#endif
+#ifdef ENC_TYPE_AES
+  if (enc == ENC_TYPE_AES) return String("WPA2");
+#endif
+  return String("WPA2");
+}
+
+static String computeWifiDetail() {
+  wl_status_t status = WiFi.status();
+  if (status == WL_CONNECTED) {
+    String ssid = shortenLabel(WiFi.SSID(), 12);
+    long rssi = WiFi.RSSI();
+    int channel = WiFi.channel();
+    String security = describeEncryptionType(WiFi.encryptionType());
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s %lddBm C%d %s",
+             ssid.c_str(), rssi, channel, security.c_str());
+    return String(buf);
+  }
+
+  wifi_mode_t mode = WiFi.getMode();
+  if (mode == WIFI_AP || mode == WIFI_AP_STA) {
+    int channel = WiFi.channel();
+    if (channel <= 0) {
+      channel = g_apChannel;
+    }
+    int clients = WiFi.softAPgetStationNum();
+    const char* security = (g_apPass.length() >= 8) ? "WPA2" : "OPEN";
+    String ssid = shortenLabel(g_apSSID, 12);
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%s C%d %s Cl:%d",
+             ssid.c_str(), channel, security, clients);
+    return String(buf);
+  }
+
+  if (g_staConfigured) {
+    String ssid = shortenLabel(g_staSSID, 12);
+    return String("STA: ") + ssid;
+  }
+
+  return String("WiFi en veille");
 }
 
 static String describeStaStatus(wl_status_t status) {
@@ -208,16 +331,22 @@ static void updateStatusDisplay(bool force) {
   if (g_wifiInfo.apMode) {
     wifiLine += String(" (") + WiFi.softAPgetStationNum() + ")";
   }
+  String wifiDetail = g_wifiInfo.detail;
+  if (wifiDetail.length() == 0) {
+    wifiDetail = computeWifiDetail();
+  }
   String webLine = computeWebStatus();
   String udpLine = computeUdpStatus();
 
   static String prevWifi;
+  static String prevWifiDetail;
   static String prevWeb;
   static String prevUdp;
 
-  if (force || wifiLine != prevWifi || webLine != prevWeb || udpLine != prevUdp) {
-    OledPin::showStatus(wifiLine, webLine, udpLine);
+  if (force || wifiLine != prevWifi || wifiDetail != prevWifiDetail || webLine != prevWeb || udpLine != prevUdp) {
+    OledPin::showStatus(wifiLine, wifiDetail, webLine, udpLine);
     prevWifi = wifiLine;
+    prevWifiDetail = wifiDetail;
     prevWeb = webLine;
     prevUdp = udpLine;
   }
@@ -232,9 +361,12 @@ static void maintainWiFi() {
 
   if (!staConnected && !apActive) {
     WiFi.mode(g_staConfigured ? WIFI_AP_STA : WIFI_AP);
-    if (WiFi.softAP(g_apSSID.c_str(), g_apPass.c_str())) {
-      Logger::info("NET", "maintainWiFi", String("AP restarted, SSID ") + g_apSSID);
+    if (startAccessPoint()) {
+      Logger::info("NET", "maintainWiFi",
+                   String("AP restarted, SSID ") + g_apSSID + " ch " + g_apChannel);
       apActive = true;
+    } else {
+      Logger::error("NET", "maintainWiFi", "Failed to restart AP");
     }
   }
 
@@ -251,8 +383,14 @@ static void maintainWiFi() {
     line = String("WiFi: OFF");
   }
 
-  bool changed = (line != g_wifiInfo.line) || (g_wifiInfo.apMode != apActive) || (g_wifiInfo.ready != networkReady);
+  String detail = computeWifiDetail();
+
+  bool changed = (line != g_wifiInfo.line) ||
+                 (g_wifiInfo.detail != detail) ||
+                 (g_wifiInfo.apMode != apActive) ||
+                 (g_wifiInfo.ready != networkReady);
   g_wifiInfo.line = line;
+  g_wifiInfo.detail = detail;
   g_wifiInfo.apMode = apActive;
   g_wifiInfo.ready = networkReady;
 

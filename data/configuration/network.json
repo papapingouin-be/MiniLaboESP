@@ -1,0 +1,17 @@
+{
+  "mode": "ap",
+  "ap": {
+    "ssid": "MiniLabo",
+    "password": "12345678"
+  },
+  "sta": {
+    "enabled": false,
+    "ssid": "",
+    "password": ""
+  },
+  "udp_enabled": false,
+  "udp_port": 50000,
+  "udp_dest": "255.255.255.255",
+  "udp_dest_port": 50000,
+  "udp_emit": false
+}

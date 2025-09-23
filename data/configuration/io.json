@@ -1,0 +1,33 @@
+{
+  "devices": [
+    {
+      "id": "IO_A0",
+      "type": "adc",
+      "driver": "a0",
+      "bits": 10,
+      "vref": 1.0,
+      "ratio": 3.3
+    },
+    {
+      "id": "IO_ADS_A0",
+      "type": "adc",
+      "driver": "ads1115",
+      "i2c_addr": 72,
+      "channel": 0,
+      "pga": 4.096
+    },
+    {
+      "id": "IO_DAC_OUT",
+      "type": "dac",
+      "driver": "mcp4725",
+      "i2c_addr": 96,
+      "bits": 12,
+      "vref": 3.3
+    },
+    {
+      "id": "IO_0_10V_OUT",
+      "type": "analog_out",
+      "driver": "0_10v"
+    }
+  ]
+}

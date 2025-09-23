@@ -1,0 +1,18 @@
+{
+  "channels": [
+    {
+      "name": "CH1",
+      "source": "IO_A0",
+      "mode": "UDC",
+      "decimals": 3,
+      "filter_window": 16
+    },
+    {
+      "name": "CH2",
+      "source": "IO_ADS_A0",
+      "mode": "UDC",
+      "decimals": 3,
+      "filter_window": 16
+    }
+  ]
+}

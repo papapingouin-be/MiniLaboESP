@@ -1,0 +1,13 @@
+{
+  "channels": [
+    {
+      "name": "SCOPE_CH1",
+      "source": "IO_A0",
+      "amplitude": 1.0,
+      "offset": 0.0,
+      "buffer_size": 256
+    }
+  ],
+  "timebase_ms_per_div": 10,
+  "vdiv": 1.0
+}

@@ -1,0 +1,7 @@
+{
+  "target": "IO_0_10V_OUT",
+  "freq": 50.0,
+  "amp": 50.0,
+  "offset": 0.0,
+  "wave": "sine"
+}

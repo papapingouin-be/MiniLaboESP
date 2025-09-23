@@ -19,7 +19,7 @@ void OledPin::begin() {
 void OledPin::showPIN(int pin) {
   _oled.clearBuffer();
   _oled.setFont(u8g2_font_ncenB14_tr);
-  _oled.drawStr(0, 16, "Code PIN");
+  _oled.drawStr(0, 16, "-Code PIN-");
   char buf[5];
   snprintf(buf, sizeof(buf), "%04d", pin);
   _oled.setFont(u8g2_font_fub30_tn);

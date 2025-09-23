@@ -5,7 +5,7 @@
 
 #include "Logger.h"
 
-LogEntry Logger::_ring[RING_SIZE];
+Logger::LogEntry Logger::_ring[RING_SIZE];
 size_t Logger::_ringHead = 0;
 bool Logger::_hasWrapped = false;
 unsigned long Logger::_lastFlush = 0;

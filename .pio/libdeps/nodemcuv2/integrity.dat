@@ -1,0 +1,5 @@
+ESP32Async/ESPAsyncWebServer@3.6.0
+olikraus/U8g2@^2.36.12
+adafruit/Adafruit MCP4725@^2.0.2
+bblanchon/ArduinoJson@^7.0.4
+adafruit/Adafruit ADS1X15@^2.4.0

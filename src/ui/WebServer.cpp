@@ -163,64 +163,6 @@ void WebServer::begin() {
     request->send(200, "application/json", out);
   });
 
-  // Route gÃƒÂ©nÃƒÂ©rique pour /api/config/<area>
-  _server.on("", HTTP_ANY, [](AsyncWebServerRequest *request){
-    String url = request->url();
-    if (!url.startsWith("/api/config/")) {
-      request->next();
-      return;
-    }
-    if (!checkAuth(request)) {
-      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
-      return;
-    }
-    // extraire l'area aprÃƒÂ¨s /api/config/
-    String area = url.substring(String("/api/config/").length());
-    // VÃƒÂ©rifier que c'est une zone connue
-    bool exists = false;
-    static const char* areas[] = {"general","network","io","dmm","scope","funcgen","math"};
-    for (auto a : areas) { if (area == a) { exists = true; break; } }
-    if (!exists) {
-      request->send(404, "application/json", "{\"error\":\"Unknown area\"}");
-      return;
-    }
-    if (request->method() == HTTP_GET) {
-      // Retourner le document
-      JsonDocument &cfg = ConfigStore::doc(area);
-      String out;
-      serializeJson(cfg, out);
-      request->send(200, "application/json", out);
-    } else if (request->method() == HTTP_PUT || request->method() == HTTP_POST) {
-      if (!request->hasArg("body")) {
-        request->send(400, "application/json", "{\"error\":\"Missing body\"}");
-        return;
-      }
-      String body = request->arg("body");
-      JsonDocument doc;
-      if (deserializeJson(doc, body)) {
-        request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
-        return;
-      }
-      // Remplace entiÃƒÂ¨rement la configuration de la zone
-      JsonDocument &cfg = ConfigStore::doc(area);
-      cfg.clear();
-      cfg = doc;
-      ConfigStore::requestSave(area);
-      // RÃƒÂ©initialiser les modules concernÃƒÂ©s
-      if (area == "io") {
-        IORegistry::begin();
-      } else if (area == "dmm") {
-        DMM::begin();
-      } else if (area == "scope") {
-        Scope::begin();
-      } else if (area == "funcgen") {
-        FuncGen::begin();
-      }
-      request->send(200, "application/json", "{\"success\":true}");
-    } else {
-      request->send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
-    }
-  });
 
   // DÃƒÂ©marre le serveur
   _server.begin();

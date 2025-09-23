@@ -84,7 +84,6 @@ static String computeApSSID(const String& configured);
 static String byteToUpperHex(uint8_t value);
 static bool startAccessPoint();
 static String computeWifiDetail();
-static String describeEncryptionType(uint8_t enc);
 static String shortenLabel(const String& text, uint8_t maxLen = 12);
 
 /**
@@ -100,7 +99,7 @@ static WiFiStatusInfo setupWiFi() {
   auto& net = ConfigStore::doc("network");
   String mode = net["mode"].as<String>();
   bool staRequested = (mode == "sta");
-  if (net["sta"].containsKey("enabled")) {
+  if (net["sta"]["enabled"].is<bool>()) {
     staRequested = staRequested || net["sta"]["enabled"].as<bool>();
   }
   const char* staSsid = net["sta"]["ssid"].as<const char*>();
@@ -233,42 +232,19 @@ static String shortenLabel(const String& text, uint8_t maxLen) {
   return trimmed.substring(0, maxLen - 1) + String("…");
 }
 
-static String describeEncryptionType(uint8_t enc) {
-#ifdef ENC_TYPE_NONE
-  if (enc == ENC_TYPE_NONE) return String("OPEN");
-#endif
-#ifdef ENC_TYPE_WEP
-  if (enc == ENC_TYPE_WEP) return String("WEP");
-#endif
-#ifdef ENC_TYPE_TKIP
-  if (enc == ENC_TYPE_TKIP) return String("WPA");
-#endif
-#ifdef ENC_TYPE_CCMP
-  if (enc == ENC_TYPE_CCMP) return String("WPA2");
-#endif
-#ifdef ENC_TYPE_AUTO
-  if (enc == ENC_TYPE_AUTO) return String("AUTO");
-#endif
-#ifdef ENC_TYPE_AES
-  if (enc == ENC_TYPE_AES) return String("WPA2");
-#endif
-  return String("WPA2");
-}
-
 static String computeWifiDetail() {
   wl_status_t status = WiFi.status();
   if (status == WL_CONNECTED) {
     String ssid = shortenLabel(WiFi.SSID(), 12);
     long rssi = WiFi.RSSI();
     int channel = WiFi.channel();
-    String security = describeEncryptionType(WiFi.encryptionType());
     char buf[64];
-    snprintf(buf, sizeof(buf), "%s %lddBm C%d %s",
-             ssid.c_str(), rssi, channel, security.c_str());
+    snprintf(buf, sizeof(buf), "%s %lddBm C%d",
+             ssid.c_str(), rssi, channel);
     return String(buf);
   }
 
-  wifi_mode_t mode = WiFi.getMode();
+  WiFiMode_t mode = WiFi.getMode();
   if (mode == WIFI_AP || mode == WIFI_AP_STA) {
     int channel = WiFi.channel();
     if (channel <= 0) {

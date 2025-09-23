@@ -17,12 +17,16 @@ void OledPin::begin() {
   _oled.setPowerSave(0);
 }
 
-void OledPin::showStatus(const String& wifi, const String& web, const String& udp) {
+void OledPin::showStatus(const String& wifi,
+                         const String& wifiDetail,
+                         const String& web,
+                         const String& udp) {
   _oled.clearBuffer();
   _oled.setFont(u8g2_font_6x12_tf);
   _oled.drawStr(0, 12, wifi.c_str());
-  _oled.drawStr(0, 26, web.c_str());
-  _oled.drawStr(0, 40, udp.c_str());
+  _oled.drawStr(0, 26, wifiDetail.c_str());
+  _oled.drawStr(0, 40, web.c_str());
+  _oled.drawStr(0, 54, udp.c_str());
   _oled.sendBuffer();
 }
 

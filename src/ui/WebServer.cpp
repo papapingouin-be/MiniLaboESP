@@ -164,6 +164,61 @@ void WebServer::begin() {
   });
 
 
+  // Route générique pour /api/config/<area>
+  _server.onNotFound([](AsyncWebServerRequest *request) {
+    String url = request->url();
+    if (!url.startsWith("/api/config/")) {
+      request->send(404, "text/plain", "Not found");
+      return;
+    }
+    if (!checkAuth(request)) {
+      request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
+      return;
+    }
+    String area = url.substring(strlen("/api/config/"));
+    bool exists = false;
+    static const char* areas[] = {"general","network","io","dmm","scope","funcgen","math"};
+    for (auto a : areas) { if (area == a) { exists = true; break; } }
+    if (!exists) {
+      request->send(404, "application/json", "{\"error\":\"Unknown area\"}");
+      return;
+    }
+    if (request->method() == HTTP_GET) {
+      JsonDocument &cfg = ConfigStore::doc(area);
+      String out;
+      serializeJson(cfg, out);
+      request->send(200, "application/json", out);
+      return;
+    }
+    if (request->method() != HTTP_PUT && request->method() != HTTP_POST) {
+      request->send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
+      return;
+    }
+    if (!request->hasArg("body")) {
+      request->send(400, "application/json", "{\"error\":\"Missing body\"}");
+      return;
+    }
+    String body = request->arg("body");
+    JsonDocument doc;
+    if (deserializeJson(doc, body)) {
+      request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
+      return;
+    }
+    JsonDocument &cfg = ConfigStore::doc(area);
+    cfg.clear();
+    cfg = doc;
+    ConfigStore::requestSave(area);
+    if (area == "io") {
+      IORegistry::begin();
+    } else if (area == "dmm") {
+      DMM::begin();
+    } else if (area == "scope") {
+      Scope::begin();
+    } else if (area == "funcgen") {
+      FuncGen::begin();
+    }
+    request->send(200, "application/json", "{\"success\":true}");
+  });
   // DÃƒÂ©marre le serveur
   _server.begin();
   Logger::info("WS", "begin", "Web server started on port 80");

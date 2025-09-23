@@ -72,6 +72,8 @@ static void updateDisplayState();
 static String computeWebStatus();
 static String computeUdpStatus();
 static String describeStaStatus(wl_status_t status);
+static String computeApSSID(const String& configured);
+static String byteToUpperHex(uint8_t value);
 
 /**
  * Configuration réseau initiale.
@@ -97,9 +99,8 @@ static WiFiStatusInfo setupWiFi() {
   g_staSSID = staSsid;
   g_staPass = staPass;
 
-  g_apSSID = net["ap"]["ssid"].as<String>();
+  String apConfigured = net["ap"]["ssid"].as<String>();
   g_apPass = net["ap"]["password"].as<String>();
-  if (g_apSSID.length() == 0) g_apSSID = DEFAULT_AP_SSID;
   if (g_apPass.length() < 8) g_apPass = DEFAULT_AP_PASS;
 
   if (g_staConfigured) {
@@ -114,6 +115,7 @@ static WiFiStatusInfo setupWiFi() {
       yield();
     }
     if (WiFi.status() == WL_CONNECTED) {
+      g_apSSID = computeApSSID(apConfigured);
       Logger::info("NET", "setupWiFi", String("Connected, IP ") + WiFi.localIP().toString());
       info.line = String("WiFi: STA ") + WiFi.localIP().toString();
       info.ready = true;
@@ -124,6 +126,7 @@ static WiFiStatusInfo setupWiFi() {
   }
 
   WiFi.mode(g_staConfigured ? WIFI_AP_STA : WIFI_AP);
+  g_apSSID = computeApSSID(apConfigured);
   if (WiFi.softAP(g_apSSID.c_str(), g_apPass.c_str())) {
     Logger::info("NET", "setupWiFi", String("AP started, SSID ") + g_apSSID);
     info.line = String("WiFi: AP ") + g_apSSID;
@@ -141,6 +144,28 @@ static WiFiStatusInfo setupWiFi() {
   info.apMode = false;
   g_staConfigured = false;
   return info;
+}
+
+static String computeApSSID(const String& configured) {
+  String base = configured;
+  base.trim();
+  if (base.length() == 0) {
+    base = DEFAULT_AP_SSID;
+  }
+
+  uint8_t mac[6];
+  WiFi.softAPmacAddress(mac);
+  String suffix = byteToUpperHex(mac[4]) + byteToUpperHex(mac[5]);
+  return base + suffix;
+}
+
+static String byteToUpperHex(uint8_t value) {
+  String hex = String(value, HEX);
+  hex.toUpperCase();
+  if (hex.length() < 2) {
+    hex = "0" + hex;
+  }
+  return hex;
 }
 
 static String describeStaStatus(wl_status_t status) {

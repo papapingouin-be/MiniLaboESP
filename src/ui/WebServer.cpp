@@ -62,8 +62,7 @@ bool WebServer::begin() {
     if (!body) {
       return;
     }
-    String chunk(reinterpret_cast<const char *>(data), len);
-    body->concat(chunk);
+    body->concat(reinterpret_cast<const char *>(data), len);
   });
 
   // Route statique pour servir les fichiers depuis LittleFS

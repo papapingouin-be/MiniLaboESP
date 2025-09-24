@@ -40,6 +40,8 @@ bool g_oledInitialised = false;
 std::vector<String> g_deferredOledMessages;
 unsigned long g_lastPeripheralTick = 0;
 unsigned long g_lastLoggerTick = 0;
+WiFiEventHandler g_apStationConnectedHandler;
+WiFiEventHandler g_apStationDisconnectedHandler;
 
 constexpr unsigned long kPeripheralIntervalMs = 5;
 constexpr unsigned long kLoggerIntervalMs = 20;
@@ -167,51 +169,52 @@ bool startAccessPointVerbose() {
   WiFi.persistent(false);
   WiFi.disconnect(true);
   WiFi.softAPdisconnect(true);
-
-  if (!WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet)) {
-    Serial.println(F("[MiniLabo] Échec de la configuration IP de l'AP"));
-    Logger::warn("NET", "AP", "softAPConfig failed");
-  }
-
   WiFi.mode(WIFI_AP);
 
-  if (WiFi.softAP(kAccessPointSsid)) {
-    Serial.print(F("[MiniLabo] Point d'accès démarré : "));
-    Serial.println(kAccessPointSsid);
-    Serial.print(F("[MiniLabo] Adresse IP : "));
-    Serial.println(WiFi.softAPIP());
-    g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
-    g_status.wifiHardware = computeWifiHardware();
-    return true;
-  } else {
+  if (!WiFi.softAP(kAccessPointSsid)) {
     Serial.println(F("[MiniLabo] Impossible de démarrer le point d'accès"));
     g_status.wifiLine = F("WiFi: ERROR");
     g_status.wifiHardware = F("AP init failed");
     enqueueOledMessage(F("softAP start failed"));
     return false;
   }
+
+  if (!WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet)) {
+    Serial.println(F("[MiniLabo] Échec de la configuration IP de l'AP"));
+    Logger::warn("NET", "AP", "softAPConfig failed");
+    enqueueOledMessage(F("softAP config failed"));
+  }
+
+  Serial.print(F("[MiniLabo] Point d'accès démarré : "));
+  Serial.println(kAccessPointSsid);
+  Serial.print(F("[MiniLabo] Adresse IP : "));
+  Serial.println(WiFi.softAPIP());
+  g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
+  g_status.wifiHardware = computeWifiHardware();
+  enqueueOledMessage(String(F("AP prêt: ")) + kAccessPointSsid);
+  return true;
 }
 
 bool startAccessPointSilent() {
   WiFi.persistent(false);
   WiFi.disconnect(true);
   WiFi.softAPdisconnect(true);
+  WiFi.mode(WIFI_AP);
+  if (!WiFi.softAP(kAccessPointSsid)) {
+    g_status.wifiLine = F("WiFi: ERROR");
+    g_status.wifiHardware = F("AP init failed");
+    enqueueOledMessage(F("softAP restart failed"));
+    return false;
+  }
 
   if (!WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet)) {
     Logger::warn("NET", "AP", "softAPConfig failed");
+    enqueueOledMessage(F("softAP config failed"));
   }
 
-  WiFi.mode(WIFI_AP);
-  if (WiFi.softAP(kAccessPointSsid)) {
-    g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
-    g_status.wifiHardware = computeWifiHardware();
-    return true;
-  }
-
-  g_status.wifiLine = F("WiFi: ERROR");
-  g_status.wifiHardware = F("AP init failed");
-  enqueueOledMessage(F("softAP restart failed"));
-  return false;
+  g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
+  g_status.wifiHardware = computeWifiHardware();
+  return true;
 }
 
 void maintainAccessPoint() {
@@ -224,6 +227,22 @@ void maintainAccessPoint() {
     g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
     g_status.wifiHardware = computeWifiHardware();
   }
+}
+
+void setupAccessPointEventHandlers() {
+  g_apStationConnectedHandler = WiFi.onSoftAPModeStationConnected([](const WiFiEventSoftAPModeStationConnected& event) {
+    String mac = formatMacCompact(event.mac);
+    Logger::info("NET", "AP", String("Station connected ") + mac);
+    enqueueOledMessage(String(F("Client +")) + mac);
+    updateStatusDisplay(true);
+  });
+
+  g_apStationDisconnectedHandler = WiFi.onSoftAPModeStationDisconnected([](const WiFiEventSoftAPModeStationDisconnected& event) {
+    String mac = formatMacCompact(event.mac);
+    Logger::warn("NET", "AP", String("Station disconnected ") + mac);
+    enqueueOledMessage(String(F("Client -")) + mac);
+    updateStatusDisplay(true);
+  });
 }
 
 }  // namespace
@@ -247,6 +266,8 @@ void setup() {
   if (!apStarted) {
     Logger::error("NET", "setup", "Failed to start AP");
   }
+
+  setupAccessPointEventHandlers();
 
   OledPin::begin();
   g_oledInitialised = true;

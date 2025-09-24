@@ -358,43 +358,44 @@ bool WebServer::begin() {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
         return;
       }
-      String pinStr = doc["pin"].as<String>();
-      pinStr.trim();
-      String sanitized;
-      sanitized.reserve(4);
-      for (size_t i = 0; i < pinStr.length() && sanitized.length() < 4; ++i) {
-        char c = pinStr.charAt(i);
-        if (c >= '0' && c <= '9') {
-          sanitized += c;
+
+      auto sanitizePin = [](const String& value) {
+        String digits;
+        digits.reserve(4);
+        for (size_t i = 0; i < value.length() && digits.length() < 4; ++i) {
+          char c = value.charAt(i);
+          if (c >= '0' && c <= '9') {
+            digits += c;
+          }
         }
-      }
-      if (sanitized.length() > 0) {
-        while (sanitized.length() < 4) {
-          sanitized = String('0') + sanitized;
+        if (digits.length() > 0) {
+          while (digits.length() < 4) {
+            digits = String('0') + digits;
+          }
         }
-      }
-      int sanitizedValue = (sanitized.length() == 4) ? sanitized.toInt() : -1;
-      if (sanitizedValue >= 0) {
-        sanitizedValue %= 10000;
-      }
+        return digits;
+      };
+
+      String submittedSanitized = sanitizePin(doc["pin"].as<String>());
       auto& gdoc = ConfigStore::doc("general");
       JsonVariant pinVariant = gdoc["pin"];
-      int expectedValue = 0;
+      String expectedRaw;
       if (pinVariant.isNull()) {
-        expectedValue = 0;
+        expectedRaw = F("0000");
       } else if (pinVariant.is<const char*>()) {
-        expectedValue = String(pinVariant.as<const char*>()).toInt();
+        expectedRaw = pinVariant.as<const char*>();
       } else if (pinVariant.is<int>()) {
-        expectedValue = pinVariant.as<int>();
+        expectedRaw = String(pinVariant.as<int>());
+      } else if (pinVariant.is<long>()) {
+        expectedRaw = String(pinVariant.as<long>());
       } else {
-        expectedValue = gdoc["pin"].as<int>();
+        expectedRaw = pinVariant.as<String>();
       }
-      expectedValue %= 10000;
-      if (expectedValue < 0) {
-        expectedValue += 10000;
-      }
-      if (sanitized.length() == 4 && sanitizedValue == expectedValue) {
-        // Auth ok : dÃƒÂ©finir cookie
+      String expectedSanitized = sanitizePin(expectedRaw);
+
+      if (submittedSanitized.length() == 4 && expectedSanitized.length() == 4 &&
+          submittedSanitized == expectedSanitized) {
+        // Auth ok : définir cookie
         _hasAuthenticatedClient = true;
         AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"success\":true}");
         response->addHeader("Set-Cookie", String("mlpin=1; Path=/"));

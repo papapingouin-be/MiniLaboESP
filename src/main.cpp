@@ -62,6 +62,7 @@ struct AccessPointSettings {
 static StationSettings g_staSettings;
 static AccessPointSettings g_apSettings;
 static String g_apSSID;
+static String g_apPassword;
 static IPAddress g_apIp(192, 168, 4, 1);
 static IPAddress g_apGateway(192, 168, 4, 1);
 static IPAddress g_apSubnet(255, 255, 255, 0);
@@ -88,6 +89,7 @@ static bool startAccessPoint();
 static String computeWifiHardware();
 static String phyModeToString(WiFiPhyMode_t mode);
 static String formatMacCompact(const uint8_t* mac);
+static void handleLogLineForDisplay(const String& line);
 
 /**
  * Lecture de la configuration Wi-Fi depuis network.json.
@@ -112,6 +114,14 @@ static void loadWiFiSettings() {
 
   String apConfigured = net["ap"]["ssid"].as<String>();
   g_apSSID = computeApSSID(apConfigured);
+
+  String apPassword = net["ap"]["password"].as<String>();
+  apPassword.trim();
+  if (apPassword.length() > 0 && apPassword.length() < 8) {
+    Logger::warn("NET", "loadWiFiSettings", "AP password too short, disabling security");
+    apPassword = "";
+  }
+  g_apPassword = apPassword;
 
   int configuredChannel = net["ap"]["channel"].as<int>();
   if (configuredChannel < 1 || configuredChannel > 13) {
@@ -238,7 +248,10 @@ static bool startAccessPoint() {
   WiFi.softAPdisconnect(true);
   delay(100);
 
-  const char* passphrase = "";
+  const char* passphrase = nullptr;
+  if (g_apPassword.length() >= 8) {
+    passphrase = g_apPassword.c_str();
+  }
 
   bool started = WiFi.softAP(g_apSSID.c_str(),
                              passphrase,
@@ -416,7 +429,8 @@ static void maintainWiFi() {
     } else if (now - g_lastReconnectAttempt >= STA_RETRY_INTERVAL_MS) {
       Logger::info("NET", "maintainWiFi", "Retrying STA connection");
       WiFi.mode(WIFI_AP_STA);
-      WiFi.softAP(g_apSSID.c_str(), "", g_apSettings.channel, g_apSettings.hidden, g_apSettings.maxClients);
+      const char* passphrase = (g_apPassword.length() >= 8) ? g_apPassword.c_str() : nullptr;
+      WiFi.softAP(g_apSSID.c_str(), passphrase, g_apSettings.channel, g_apSettings.hidden, g_apSettings.maxClients);
       WiFi.begin(g_staSettings.ssid.c_str(), g_staSettings.password.c_str());
       g_lastReconnectAttempt = now;
     }
@@ -425,6 +439,20 @@ static void maintainWiFi() {
 
 static void updateDisplayState() {
   updateStatusDisplay(false);
+}
+
+static void handleLogLineForDisplay(const String& line) {
+  if (line.indexOf("[E]") < 0) {
+    return;
+  }
+
+  int prefixEnd = line.indexOf("] ");
+  if (prefixEnd < 0 || prefixEnd + 2 >= line.length()) {
+    return;
+  }
+
+  String payload = line.substring(prefixEnd + 2);
+  OledPin::pushErrorMessage(payload);
 }
 
 void setup() {
@@ -450,6 +478,7 @@ void setup() {
 
   // Initialise le système de journalisation
   Logger::begin();
+  Logger::setLogCallback(handleLogLineForDisplay);
 
   // Enregistrement des entrées/sorties disponibles
   IORegistry::begin();
@@ -484,6 +513,7 @@ void loop() {
   UDPServer::loop();
   maintainWiFi();
   updateDisplayState();
+  OledPin::loop();
   // Yield pour éviter le watchdog
   yield();
 }

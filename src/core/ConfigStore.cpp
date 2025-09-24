@@ -10,6 +10,61 @@
 #include <ArduinoJson.h>
 #include <LittleFS.h>
 
+namespace {
+  struct AreaDefinition {
+    const char *area;
+    const char *file;
+    size_t capacity;
+  };
+
+  void applyDefaults(const String& area, JsonDocument& doc) {
+    doc.clear();
+    if (area == "general") {
+      doc["pin"] = 1234;
+      doc["version"] = 1;
+      JsonArray ui = doc["ui"].to<JsonArray>();
+      ui.add("dmm");
+      ui.add("scope");
+      ui.add("funcgen");
+      ui.add("io");
+    } else if (area == "network") {
+      JsonObject net = doc.to<JsonObject>();
+      net["mode"] = "ap";
+      JsonObject ap = net["ap"].to<JsonObject>();
+      ap["ssid"] = "MiniLabo";
+      ap["password"] = "12345678";
+      JsonObject sta = net["sta"].to<JsonObject>();
+      sta["enabled"] = false;
+      sta["ssid"] = "";
+      sta["password"] = "";
+      net["udp_enabled"] = false;
+      net["udp_port"] = 50000;
+      net["udp_dest"] = "255.255.255.255";
+      net["udp_dest_port"] = 50000;
+      net["udp_emit"] = false;
+    } else if (area == "io") {
+      JsonArray devices = doc["devices"].to<JsonArray>();
+      JsonObject d0 = devices.add<JsonObject>();
+      d0["id"] = "IO_A0";
+      d0["type"] = "adc";
+      d0["driver"] = "a0";
+      d0["bits"] = 10;
+      d0["vref"] = 1.0;
+      d0["ratio"] = 3.3;
+    } else if (area == "dmm") {
+      JsonArray channels = doc["channels"].to<JsonArray>();
+      JsonObject c0 = channels.add<JsonObject>();
+      c0["name"] = "CH1";
+      c0["source"] = "IO_A0";
+      c0["mode"] = "UDC";
+      c0["decimals"] = 3;
+      c0["filter_window"] = 16;
+    } else {
+      doc.clear();
+    }
+  }
+}
+
 // DÃ©finition des constantes statiques
 std::map<String, ConfigStore::AreaState> ConfigStore::_areas;
 unsigned long ConfigStore::_lastSave = 0;
@@ -18,18 +73,18 @@ const unsigned long ConfigStore::MIN_PERIOD_MS = 2000UL;
 
 void ConfigStore::begin() {
   // Initialise la liste des zones et leurs fichiers associÃ©s
-  const struct { const char *area; const char *file; } areas[] = {
-    {"general",  "/configuration/general.json"},
-    {"network",  "/configuration/network.json"},
-    {"io",       "/configuration/io.json"},
-    {"dmm",      "/configuration/dmm.json"},
-    {"scope",    "/configuration/scope.json"},
-    {"funcgen",  "/configuration/funcgen.json"},
-    {"math",     "/configuration/math.json"}
+  const AreaDefinition areas[] = {
+    {"general",  "/configuration/general.json", 1024},
+    {"network",  "/configuration/network.json", 1024},
+    {"io",       "/configuration/io.json",      2048},
+    {"dmm",      "/configuration/dmm.json",     1024},
+    {"scope",    "/configuration/scope.json",   2048},
+    {"funcgen",  "/configuration/funcgen.json", 1024},
+    {"math",     "/configuration/math.json",    1024}
   };
 
   for (const auto &def : areas) {
-    JsonDocument* doc = new JsonDocument();
+    JsonDocument* doc = new DynamicJsonDocument(def.capacity);
     AreaState state;
     state.filename = def.file;
     state.document = doc;
@@ -75,54 +130,14 @@ void ConfigStore::loadArea(const String& area) {
   File f = LittleFS.open(s.filename, "r");
   if (!f) {
     Logger::warn("CFG", "loadArea", String("File not found, using defaults: ") + s.filename);
-    // DÃ©finition des valeurs par dÃ©faut minimalistes
-    // GÃ©nÃ©ral
-    if (area == "general") {
-      s.document->clear();
-      (*s.document)["pin"] = 1234;
-      (*s.document)["version"] = 1;
-      JsonArray ui = (*s.document)["ui"].to<JsonArray>();
-      ui.add("dmm"); ui.add("scope"); ui.add("funcgen"); ui.add("io");
-    } else if (area == "network") {
-      s.document->clear();
-      (*s.document)["mode"] = "ap";
-      JsonObject ap = (*s.document)["ap"].to<JsonObject>();
-      ap["ssid"] = "MiniLabo";
-      ap["password"] = "12345678";
-      JsonObject sta = (*s.document)["sta"].to<JsonObject>();
-      sta["enabled"] = false;
-      sta["ssid"] = "";
-      sta["password"] = "";
-    } else if (area == "io") {
-      s.document->clear();
-      JsonArray devices = (*s.document)["devices"].to<JsonArray>();
-      JsonObject d0 = devices.add<JsonObject>();
-      d0["id"] = "IO_A0";
-      d0["type"] = "adc";
-      d0["driver"] = "a0";
-      d0["bits"] = 10;
-      d0["vref"] = 1.0;
-      d0["ratio"] = 3.3;
-    } else if (area == "dmm") {
-      s.document->clear();
-      JsonArray channels = (*s.document)["channels"].to<JsonArray>();
-      JsonObject c0 = channels.add<JsonObject>();
-      c0["name"] = "CH1";
-      c0["source"] = "IO_A0";
-      c0["mode"] = "UDC";
-      c0["decimals"] = 3;
-      c0["filter_window"] = 16;
-    } else {
-      s.document->clear();
-    }
+    applyDefaults(area, *s.document);
     return;
   }
   // DÃ©sÃ©rialisation du JSON
   DeserializationError err = deserializeJson(*s.document, f);
   if (err) {
     Logger::error("CFG", "loadArea", String("Failed to parse ") + s.filename + ": " + err.c_str());
-    // Vider document en cas d'erreur
-    s.document->clear();
+    applyDefaults(area, *s.document);
   }
   f.close();
 }

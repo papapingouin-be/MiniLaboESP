@@ -70,7 +70,7 @@ namespace {
    * }
    */
   void emitDMMValues() {
-    JsonDocument doc;
+    DynamicJsonDocument doc(512);
     doc["type"] = "dmm";
     doc["ts"] = millis();
     JsonObject vals = doc["values"].to<JsonObject>();
@@ -118,7 +118,7 @@ void loop() {
       data += c;
     }
     // Tentative de parsing JSON
-    JsonDocument doc;
+    DynamicJsonDocument doc(512);
     DeserializationError err = deserializeJson(doc, data);
     if (!err) {
       // Commande reconnue : on peut implÃ©menter des actions

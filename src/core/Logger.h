@@ -14,6 +14,7 @@
 
 #include <Arduino.h>
 #include <LittleFS.h>
+#include <vector>
 
 /**
  * Niveaux de journalisation.
@@ -43,10 +44,9 @@ public:
   static void error(const String& category, const String& function, const String& message);
 
   /**
-   * Définit un callback appelé à chaque message loggé.  On peut
-   * utiliser ce mécanisme pour envoyer les logs en temps réel par
-   * WebSocket.  Le callback reçoit la ligne de log déjà formatée
-   * (timestamp et texte).
+   * Enregistre un callback appelé à chaque message loggé. Plusieurs
+   * callbacks peuvent être enregistrés ; ils seront invoqués dans l'ordre
+   * d'inscription avec la ligne déjà formatée (timestamp et texte).
    */
   static void setLogCallback(void (*callback)(const String& line));
 
@@ -73,7 +73,7 @@ private:
   static size_t _ringHead;
   static bool _hasWrapped;
   static unsigned long _lastFlush;
-  static void (*_callback)(const String& line);
+  static std::vector<void (*)(const String& line)> _callbacks;
 
   static void flushToFS();
   static String levelToString(LogLevel level);

@@ -5,16 +5,19 @@
 
 #include "Logger.h"
 
+#include <vector>
+
 Logger::LogEntry Logger::_ring[RING_SIZE];
 size_t Logger::_ringHead = 0;
 bool Logger::_hasWrapped = false;
 unsigned long Logger::_lastFlush = 0;
-void (*Logger::_callback)(const String& line) = nullptr;
+std::vector<void (*)(const String& line)> Logger::_callbacks;
 
 void Logger::begin() {
   _ringHead = 0;
   _hasWrapped = false;
   _lastFlush = millis();
+  _callbacks.clear();
 }
 
 void Logger::loop() {
@@ -26,7 +29,15 @@ void Logger::loop() {
 }
 
 void Logger::setLogCallback(void (*callback)(const String& line)) {
-  _callback = callback;
+  if (!callback) {
+    return;
+  }
+  for (auto existing : _callbacks) {
+    if (existing == callback) {
+      return;
+    }
+  }
+  _callbacks.push_back(callback);
 }
 
 void Logger::log(LogLevel level, const String& category, const String& function, const String& message) {
@@ -45,8 +56,8 @@ void Logger::log(LogLevel level, const String& category, const String& function,
   snprintf(buf, sizeof(buf), "%10lu", e.ts);
   String line = String(buf) + " [" + levelToString(level) + "] " + e.category + "/" + e.function + ": " + e.message;
   // Appel du callback temps réel
-  if (_callback) {
-    _callback(line);
+  for (auto callback : _callbacks) {
+    callback(line);
   }
   // Optionnel : impression série pour debug
   Serial.println(line);

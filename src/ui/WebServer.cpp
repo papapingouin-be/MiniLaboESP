@@ -53,7 +53,7 @@ bool WebServer::begin() {
     // Lire le corps JSON
     if (request->hasArg("body")) {
       String body = request->arg("body");
-      JsonDocument doc;
+      DynamicJsonDocument doc(128);
       DeserializationError err = deserializeJson(doc, body);
       if (err) {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -81,7 +81,7 @@ bool WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    JsonDocument doc;
+    DynamicJsonDocument doc(1024);
     JsonArray arr = doc.to<JsonArray>();
     auto list = IORegistry::list();
     for (auto io : list) {
@@ -101,7 +101,7 @@ bool WebServer::begin() {
       return;
     }
     DMM::loop(); // mise ÃƒÂ  jour rapide
-    JsonDocument doc;
+    DynamicJsonDocument doc(256);
     JsonObject obj = doc.to<JsonObject>();
     DMM::values(obj);
     String out;
@@ -117,7 +117,7 @@ bool WebServer::begin() {
     }
     // Mise ÃƒÂ  jour de l'oscilloscope
     Scope::loop();
-    JsonDocument doc;
+    DynamicJsonDocument doc(1024);
     JsonObject obj = doc.to<JsonObject>();
     Scope::toJson(obj);
     String out;
@@ -136,7 +136,7 @@ bool WebServer::begin() {
       return;
     }
     String body = request->arg("body");
-    JsonDocument doc;
+    DynamicJsonDocument doc(256);
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
@@ -161,7 +161,7 @@ bool WebServer::begin() {
       lines = request->getParam("n")->value().toInt();
     }
     String result = Logger::tail(lines);
-    JsonDocument doc;
+    DynamicJsonDocument doc(256);
     doc["lines"] = result;
     String out;
     serializeJson(doc, out);
@@ -204,7 +204,7 @@ bool WebServer::begin() {
       return;
     }
     String body = request->arg("body");
-    JsonDocument doc;
+    DynamicJsonDocument doc(1024);
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;

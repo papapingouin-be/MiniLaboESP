@@ -19,6 +19,10 @@ namespace OledPin {
                   const String& wifiHardware,
                   const String& web,
                   const String& udp);
+  /** Met à jour l'affichage du statut (scrolling). */
+  void loop();
+  /** Ajoute un message d'erreur à faire défiler. */
+  void pushErrorMessage(const String& message);
   /** Affiche le code PIN à l'écran. */
   void showPIN(int pin);
   /** Affiche un aperçu des IO après authentification. */

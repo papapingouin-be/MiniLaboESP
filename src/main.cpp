@@ -3,9 +3,9 @@
 
 namespace {
 constexpr char kAccessPointSsid[] = "MiniLabo";
-constexpr IPAddress kAccessPointIp(192, 168, 4, 1);
-constexpr IPAddress kAccessPointGateway(192, 168, 4, 1);
-constexpr IPAddress kAccessPointSubnet(255, 255, 255, 0);
+const IPAddress kAccessPointIp(192, 168, 4, 1);
+const IPAddress kAccessPointGateway(192, 168, 4, 1);
+const IPAddress kAccessPointSubnet(255, 255, 255, 0);
 }
 
 void setup() {

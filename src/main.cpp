@@ -90,6 +90,7 @@ static String computeWifiHardware();
 static String phyModeToString(WiFiPhyMode_t mode);
 static String formatMacCompact(const uint8_t* mac);
 static void handleLogLineForDisplay(const String& line);
+static bool waitForSoftApReady(unsigned long timeoutMs = 1500);
 
 /**
  * Lecture de la configuration Wi-Fi depuis network.json.
@@ -260,7 +261,19 @@ static bool startAccessPoint() {
     passphrase = g_apPassword.c_str();
   }
 
+  auto applyApConfig = [&](const String& attemptTag) {
+    if (!WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet)) {
+      Logger::warn("NET", "startAccessPoint",
+                   String("softAPConfig failed during ") + attemptTag +
+                   ", keeping previous IP");
+      return false;
+    }
+    return true;
+  };
+
   auto attemptStart = [&](const char* attemptTag) {
+    applyApConfig(String(attemptTag) + " pre");
+
     bool started = WiFi.softAP(g_apSSID.c_str(),
                                passphrase,
                                g_apSettings.channel,
@@ -270,10 +283,13 @@ static bool startAccessPoint() {
       return false;
     }
 
-    if (!WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet)) {
+    applyApConfig(String(attemptTag) + " post");
+
+    if (!waitForSoftApReady()) {
       Logger::warn("NET", "startAccessPoint",
-                   String("softAPConfig failed during ") + attemptTag +
-                   ", keeping previous IP");
+                   String("softAP did not acquire IP during ") + attemptTag);
+      WiFi.softAPdisconnect(true);
+      return false;
     }
     return true;
   };
@@ -296,6 +312,20 @@ static bool startAccessPoint() {
     Logger::error("NET", "startAccessPoint", "softAP start failed");
   }
   return started;
+}
+
+static bool waitForSoftApReady(unsigned long timeoutMs) {
+  unsigned long start = millis();
+  IPAddress zero(0, 0, 0, 0);
+  while (millis() - start < timeoutMs) {
+    IPAddress ip = WiFi.softAPIP();
+    if (ip != zero) {
+      return true;
+    }
+    delay(50);
+    yield();
+  }
+  return false;
 }
 
 static String computeWifiHardware() {

@@ -2,7 +2,7 @@
   "mode": "ap",
   "ap": {
     "ssid": "MiniLabo",
-    "password": "12345678"
+    "password": ""
   },
   "sta": {
     "enabled": false,

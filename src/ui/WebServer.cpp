@@ -21,22 +21,22 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
   <meta charset="UTF-8">
   <title>MiniLabo Dashboard</title>
   <style>
-    body { background:#0d1117; color:#d0d0d0; font-family:Arial,Helvetica,sans-serif; margin:0; }
-    header { padding:1rem; text-align:center; font-size:1.5rem; background:#161b22; border-bottom:1px solid #30363d; }
-    #loginForm { width:300px; margin:5rem auto; padding:2rem; background:#161b22; border-radius:0.5rem; box-shadow:0 0 10px rgba(0,0,0,0.5); }
-    #loginForm input { width:100%; padding:0.5rem; margin:0.5rem 0; color:#f6f8fa; }
-    #loginForm .numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:0.5rem; margin-top:1rem; }
-    #loginForm .numpad button { background:#30363d; padding:0.75rem; font-size:1.2rem; }
-    #loginForm .numpad button:hover { background:#484f58; }
-    #loginForm .numpad-actions { display:flex; gap:0.5rem; margin-top:0.5rem; }
-    #loginForm .numpad-actions button { flex:1; background:#484f58; }
-    #dashboard { display:none; padding:1rem; }
-    .cards { display:flex; flex-wrap:wrap; gap:1rem; }
-    .card { background:#161b22; border:1px solid #30363d; border-radius:0.5rem; padding:1rem; flex:1; min-width:250px; }
-    button { background:#238636; color:#fff; border:none; padding:0.5rem 1rem; border-radius:0.3rem; cursor:pointer; }
-    button:hover { background:#2ea043; }
-    input, select { background:#0d1117; border:1px solid #30363d; color:#d0d0d0; border-radius:0.3rem; padding:0.3rem; }
-    #logsPanel { background:#0d1117; border:1px solid #30363d; max-height:200px; overflow:auto; padding:0.5rem; margin-top:1rem; }
+    body { background:#f4f6fb; color:#1f2933; font-family:Arial,Helvetica,sans-serif; margin:0; }
+    header { padding:1.25rem; text-align:center; font-size:1.6rem; background:#ffffff; color:#1f2933; border-bottom:1px solid #d0d7de; box-shadow:0 2px 6px rgba(15,23,42,0.08); }
+    #loginForm { width:320px; margin:4rem auto; padding:2.25rem; background:#ffffff; color:#1f2933; border-radius:0.85rem; box-shadow:0 18px 40px rgba(15,23,42,0.18); }
+    #loginForm input { width:100%; padding:0.65rem; margin:0.5rem 0; background:#f9fafc; border:1px solid #cbd5e1; border-radius:0.55rem; color:#1f2933; box-shadow:inset 0 1px 2px rgba(15,23,42,0.05); }
+    #loginForm .numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:0.6rem; margin-top:1.2rem; }
+    #loginForm .numpad button { background:#e2e8f0; color:#1f2933; padding:0.85rem; font-size:1.25rem; border:none; border-radius:0.6rem; transition:background 0.2s ease, transform 0.1s ease; }
+    #loginForm .numpad button:hover { background:#cbd5f5; transform:translateY(-1px); }
+    #loginForm .numpad-actions { display:flex; gap:0.6rem; margin-top:0.6rem; }
+    #loginForm .numpad-actions button { flex:1; background:#dbeafe; color:#1f2937; border:none; border-radius:0.6rem; }
+    #dashboard { display:none; padding:1.5rem; }
+    .cards { display:flex; flex-wrap:wrap; gap:1.25rem; }
+    .card { background:#ffffff; border:1px solid #e2e8f0; border-radius:0.85rem; padding:1.25rem; flex:1; min-width:250px; box-shadow:0 12px 30px rgba(15,23,42,0.12); }
+    button { background:#2563eb; color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:0.5rem; cursor:pointer; transition:background 0.2s ease, transform 0.1s ease; }
+    button:hover { background:#1d4ed8; transform:translateY(-1px); }
+    input, select { background:#f9fafc; border:1px solid #cbd5e1; color:#1f2933; border-radius:0.5rem; padding:0.4rem 0.5rem; box-shadow:inset 0 1px 2px rgba(15,23,42,0.05); }
+    #logsPanel { background:#f9fafc; border:1px solid #d0d7de; max-height:220px; overflow:auto; padding:0.75rem; margin-top:1rem; border-radius:0.6rem; box-shadow:inset 0 1px 3px rgba(15,23,42,0.1); }
   </style>
 </head>
 <body>
@@ -77,7 +77,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       </div>
       <div class="card" id="cardScope">
         <h3>Oscilloscope</h3>
-        <canvas id="scopeCanvas" width="300" height="150" style="background:#0d1117;border:1px solid #30363d;"></canvas>
+        <canvas id="scopeCanvas" width="300" height="150" style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:0.5rem;"></canvas>
         <p>En développement...</p>
       </div>
       <div class="card" id="cardFunc">
@@ -368,15 +368,32 @@ bool WebServer::begin() {
           sanitized += c;
         }
       }
+      if (sanitized.length() > 0) {
+        while (sanitized.length() < 4) {
+          sanitized = String('0') + sanitized;
+        }
+      }
+      int sanitizedValue = (sanitized.length() == 4) ? sanitized.toInt() : -1;
+      if (sanitizedValue >= 0) {
+        sanitizedValue %= 10000;
+      }
       auto& gdoc = ConfigStore::doc("general");
-      String expected = gdoc["pin"].as<String>();
-      if (!expected.length()) {
-        expected = String(gdoc["pin"].as<int>());
+      JsonVariant pinVariant = gdoc["pin"];
+      int expectedValue = 0;
+      if (pinVariant.isNull()) {
+        expectedValue = 0;
+      } else if (pinVariant.is<const char*>()) {
+        expectedValue = String(pinVariant.as<const char*>()).toInt();
+      } else if (pinVariant.is<int>()) {
+        expectedValue = pinVariant.as<int>();
+      } else {
+        expectedValue = gdoc["pin"].as<int>();
       }
-      while (expected.length() < 4) {
-        expected = String('0') + expected;
+      expectedValue %= 10000;
+      if (expectedValue < 0) {
+        expectedValue += 10000;
       }
-      if (sanitized == expected) {
+      if (sanitized.length() == 4 && sanitizedValue == expectedValue) {
         // Auth ok : dÃƒÂ©finir cookie
         _hasAuthenticatedClient = true;
         AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"success\":true}");

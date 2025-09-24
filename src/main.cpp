@@ -240,7 +240,8 @@ static String computeWifiHardware() {
     channel = g_apChannel;
   }
 
-  const char* phy = phyModeToString(WiFi.getPhyMode());
+  //const char* phy = phyModeToString(WiFi.getPhyMode());
+  String phy = phyModeToString(WiFi.getPhyMode());
 
   String hardware = macStr + String(" C") + channel + String("/") + phy;
   return hardware;

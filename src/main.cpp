@@ -105,7 +105,18 @@ static WiFiStatusInfo setupWiFi() {
   g_staPass = staPass;
 
   String apConfigured = net["ap"]["ssid"].as<String>();
-  g_apPass = "";  // Point d'accès ouvert sans chiffrement
+  String apPassword = net["ap"]["password"].as<String>();
+  apPassword.trim();
+  if (apPassword.length() == 0) {
+    g_apPass = "";
+  } else if (apPassword.length() < 8 || apPassword.length() > 63) {
+    Logger::warn("NET", "setupWiFi",
+                 String("Invalid AP password length (") + apPassword.length() +
+                 ") - using open network");
+    g_apPass = "";
+  } else {
+    g_apPass = apPassword;
+  }
   int configuredChannel = net["ap"]["channel"].as<int>();
   if (configuredChannel < 1 || configuredChannel > 13) {
     configuredChannel = 6;
@@ -204,12 +215,12 @@ static String byteToUpperHex(uint8_t value) {
 }
 
 static bool startAccessPoint() {
-  // Ne pas couper complètement le Wi-Fi afin d'éviter de déconnecter
-  // une éventuelle liaison STA déjà établie.
-  WiFi.softAPdisconnect(false);
-  delay(50);
-  WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet);
-  const char* passphrase = g_apPass.length() == 0 ? nullptr : g_apPass.c_str();
+  // Redémarre proprement l'AP pour éviter les états incohérents.
+  WiFi.softAPdisconnect(true);
+  delay(100);
+
+  const bool openAp = g_apPass.length() == 0;
+  const char* passphrase = openAp ? "" : g_apPass.c_str();
 
   bool started = WiFi.softAP(g_apSSID.c_str(),
                              passphrase,
@@ -217,15 +228,22 @@ static bool startAccessPoint() {
                              g_apHidden,
                              g_apMaxClients);
   if (!started) {
-    delay(50);
+    delay(100);
     started = WiFi.softAP(g_apSSID.c_str(),
                           passphrase,
                           g_apChannel,
                           g_apHidden,
                           g_apMaxClients);
   }
+
   if (started) {
-    delay(50);
+    if (!WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet)) {
+      Logger::warn("NET", "startAccessPoint", "softAPConfig failed, keeping default IP");
+    }
+    WiFi.setSleepMode(WIFI_NONE_SLEEP);
+    delay(100);
+  } else {
+    Logger::error("NET", "startAccessPoint", "softAP start failed");
   }
   return started;
 }
@@ -380,7 +398,7 @@ static void maintainWiFi() {
     } else if (now - g_lastReconnectAttempt >= STA_RETRY_INTERVAL_MS) {
       Logger::info("NET", "maintainWiFi", "Retrying STA connection");
       WiFi.mode(WIFI_AP_STA);
-      const char* passphrase = g_apPass.length() == 0 ? nullptr : g_apPass.c_str();
+      const char* passphrase = g_apPass.length() == 0 ? "" : g_apPass.c_str();
       WiFi.softAP(g_apSSID.c_str(), passphrase);
       WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
       g_lastReconnectAttempt = now;

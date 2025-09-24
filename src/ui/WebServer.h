@@ -29,4 +29,5 @@ private:
   static bool _hasAuthenticatedClient;
   static void logCallback(const String& line);
   static bool checkAuth(AsyncWebServerRequest *request);
+  static String readRequestBody(AsyncWebServerRequest *request);
 };

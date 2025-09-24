@@ -251,28 +251,34 @@ static bool startAccessPoint() {
     delay(10);
   }
 
-  // Coupe uniquement les clients éventuels sans désactiver totalement le Wi-Fi.
-  WiFi.softAPdisconnect(false);
-  delay(50);
-
-  if (!WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet)) {
-    Logger::warn("NET", "startAccessPoint", "softAPConfig failed, keeping default IP");
-  }
+  // Coupe proprement l'AP courant pour éviter les états incohérents
+  WiFi.softAPdisconnect(true);
+  delay(100);
 
   const char* passphrase = nullptr;
   if (g_apPassword.length() >= 8) {
     passphrase = g_apPassword.c_str();
   }
 
-  auto attemptStart = [&]() {
-    return WiFi.softAP(g_apSSID.c_str(),
-                       passphrase,
-                       g_apSettings.channel,
-                       g_apSettings.hidden,
-                       g_apSettings.maxClients);
+  auto attemptStart = [&](const char* attemptTag) {
+    bool started = WiFi.softAP(g_apSSID.c_str(),
+                               passphrase,
+                               g_apSettings.channel,
+                               g_apSettings.hidden,
+                               g_apSettings.maxClients);
+    if (!started) {
+      return false;
+    }
+
+    if (!WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet)) {
+      Logger::warn("NET", "startAccessPoint",
+                   String("softAPConfig failed during ") + attemptTag +
+                   ", keeping previous IP");
+    }
+    return true;
   };
 
-  bool started = attemptStart();
+  bool started = attemptStart("initial start");
   if (!started) {
     Logger::warn("NET", "startAccessPoint", "Initial softAP start failed, retrying");
     delay(100);
@@ -280,7 +286,7 @@ static bool startAccessPoint() {
     // incohérents de l'ESP8266.
     WiFi.mode(desiredMode);
     delay(10);
-    started = attemptStart();
+    started = attemptStart("retry");
   }
 
   if (started) {

@@ -359,7 +359,7 @@ bool WebServer::begin() {
         return;
       }
 
-      auto sanitizePin = [](const String& value) {
+      auto extractDigits = [](const String& value) {
         String digits;
         digits.reserve(4);
         for (size_t i = 0; i < value.length() && digits.length() < 4; ++i) {
@@ -368,15 +368,25 @@ bool WebServer::begin() {
             digits += c;
           }
         }
-        if (digits.length() > 0) {
-          while (digits.length() < 4) {
-            digits = String('0') + digits;
-          }
+        return digits;
+      };
+
+      auto normalizePin = [&extractDigits](const String& value) {
+        String digits = extractDigits(value);
+        if (digits.length() == 0) {
+          digits = F("0000");
+        }
+        while (digits.length() < 4) {
+          digits = String('0') + digits;
         }
         return digits;
       };
 
-      String submittedSanitized = sanitizePin(doc["pin"].as<String>());
+      String submittedSanitized = extractDigits(doc["pin"].as<String>());
+      if (submittedSanitized.length() != 4) {
+        request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
+        return;
+      }
       auto& gdoc = ConfigStore::doc("general");
       JsonVariant pinVariant = gdoc["pin"];
       String expectedRaw;
@@ -391,9 +401,9 @@ bool WebServer::begin() {
       } else {
         expectedRaw = pinVariant.as<String>();
       }
-      String expectedSanitized = sanitizePin(expectedRaw);
+      String expectedSanitized = normalizePin(expectedRaw);
 
-      if (submittedSanitized.length() == 4 && expectedSanitized.length() == 4 &&
+      if (expectedSanitized.length() == 4 &&
           submittedSanitized == expectedSanitized) {
         // Auth ok : définir cookie
         _hasAuthenticatedClient = true;

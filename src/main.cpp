@@ -38,6 +38,11 @@ uint16_t g_udpPort = 0;
 unsigned long g_lastStatusRefresh = 0;
 bool g_oledInitialised = false;
 std::vector<String> g_deferredOledMessages;
+unsigned long g_lastPeripheralTick = 0;
+unsigned long g_lastLoggerTick = 0;
+
+constexpr unsigned long kPeripheralIntervalMs = 5;
+constexpr unsigned long kLoggerIntervalMs = 20;
 
 String formatMacCompact(const uint8_t* mac) {
   char buf[13];
@@ -267,16 +272,26 @@ void setup() {
 }
 
 void loop() {
-  ConfigStore::loop();
-  Logger::loop();
-  IORegistry::loop();
-  DMM::loop();
-  Scope::loop();
-  FuncGen::loop();
+  unsigned long now = millis();
+
+  maintainAccessPoint();
   WebServer::loop();
   UDPServer::loop();
 
-  maintainAccessPoint();
+  if (now - g_lastLoggerTick >= kLoggerIntervalMs) {
+    Logger::loop();
+    g_lastLoggerTick = now;
+  }
+
+  if (now - g_lastPeripheralTick >= kPeripheralIntervalMs) {
+    ConfigStore::loop();
+    IORegistry::loop();
+    DMM::loop();
+    Scope::loop();
+    FuncGen::loop();
+    g_lastPeripheralTick = now;
+  }
+
   updateServiceStatus();
   updateStatusDisplay(false);
   OledPin::loop();

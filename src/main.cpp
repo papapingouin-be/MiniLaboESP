@@ -23,10 +23,10 @@ const IPAddress kAccessPointGateway(192, 168, 4, 1);
 const IPAddress kAccessPointSubnet(255, 255, 255, 0);
 
 struct SystemStatus {
-  String wifiLine{F("WiFi: INIT")};
+  String wifiLine{"WiFi: INIT"};
   String wifiHardware;
-  String webLine{F("Web: OFF")};
-  String udpLine{F("UDP: OFF")};
+  String webLine{"Web: OFF"};
+  String udpLine{"UDP: OFF"};
 };
 
 SystemStatus g_status;
@@ -39,17 +39,20 @@ unsigned long g_lastStatusRefresh = 0;
 bool g_oledInitialised = false;
 std::vector<String> g_deferredOledMessages;
 
-String computeWifiHardware();
-String phyModeToString(WiFiPhyMode_t mode);
-String formatMacCompact(const uint8_t* mac);
-void enqueueOledMessage(const String& message);
-void flushDeferredOledMessages();
-void updateStatusDisplay(bool force = false);
-void updateServiceStatus();
-void handleLogLineForDisplay(const String& line);
-bool startAccessPointVerbose();
-bool startAccessPointSilent();
-void maintainAccessPoint();
+String formatMacCompact(const uint8_t* mac) {
+  char buf[13];
+  snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return String(buf);
+}
+
+String phyModeToString(WiFiPhyMode_t mode) {
+  switch (mode) {
+    case WIFI_PHY_MODE_11B: return F("11B");
+    case WIFI_PHY_MODE_11G: return F("11G");
+    case WIFI_PHY_MODE_11N: return F("11N");
+    default:                return F("UNK");
+  }
 }
 
 String computeWifiHardware() {
@@ -64,22 +67,6 @@ String computeWifiHardware() {
 
   String phy = phyModeToString(WiFi.getPhyMode());
   return macStr + String(" C") + channel + String("/") + phy;
-}
-
-String phyModeToString(WiFiPhyMode_t mode) {
-  switch (mode) {
-    case WIFI_PHY_MODE_11B: return F("11B");
-    case WIFI_PHY_MODE_11G: return F("11G");
-    case WIFI_PHY_MODE_11N: return F("11N");
-    default:                return F("UNK");
-  }
-}
-
-String formatMacCompact(const uint8_t* mac) {
-  char buf[13];
-  snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X",
-           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-  return String(buf);
 }
 
 void enqueueOledMessage(const String& message) {
@@ -233,6 +220,8 @@ void maintainAccessPoint() {
     g_status.wifiHardware = computeWifiHardware();
   }
 }
+
+}  // namespace
 
 void setup() {
   Serial.begin(115200);

@@ -12,6 +12,224 @@
 #include "devices/FuncGen.h"
 
 #include <ArduinoJson.h>
+#include <pgmspace.h>
+
+namespace {
+constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>MiniLabo Dashboard</title>
+  <style>
+    body { background:#0d1117; color:#d0d0d0; font-family:Arial,Helvetica,sans-serif; margin:0; }
+    header { padding:1rem; text-align:center; font-size:1.5rem; background:#161b22; border-bottom:1px solid #30363d; }
+    #loginForm { width:300px; margin:5rem auto; padding:2rem; background:#161b22; border-radius:0.5rem; box-shadow:0 0 10px rgba(0,0,0,0.5); }
+    #loginForm input { width:100%; padding:0.5rem; margin:0.5rem 0; color:#0d1117; }
+    #dashboard { display:none; padding:1rem; }
+    .cards { display:flex; flex-wrap:wrap; gap:1rem; }
+    .card { background:#161b22; border:1px solid #30363d; border-radius:0.5rem; padding:1rem; flex:1; min-width:250px; }
+    button { background:#238636; color:#fff; border:none; padding:0.5rem 1rem; border-radius:0.3rem; cursor:pointer; }
+    button:hover { background:#2ea043; }
+    input, select { background:#0d1117; border:1px solid #30363d; color:#d0d0d0; border-radius:0.3rem; padding:0.3rem; }
+    #logsPanel { background:#0d1117; border:1px solid #30363d; max-height:200px; overflow:auto; padding:0.5rem; margin-top:1rem; }
+  </style>
+</head>
+<body>
+  <header>MiniLabo</header>
+  <div id="loginForm">
+    <h2>Connexion</h2>
+    <label for="pinInput">Code PIN&nbsp;:</label><br>
+    <input type="password" id="pinInput" maxlength="4"><br>
+    <button onclick="login()">Se connecter</button>
+    <p id="loginStatus" style="color:red;"></p>
+  </div>
+  <div id="dashboard">
+    <div class="cards">
+      <div class="card" id="cardDMM">
+        <h3>Multimètre</h3>
+        <div id="dmmValues">...</div>
+        <div>
+          Canal: <select id="dmmSelect"></select>
+        </div>
+      </div>
+      <div class="card" id="cardScope">
+        <h3>Oscilloscope</h3>
+        <canvas id="scopeCanvas" width="300" height="150" style="background:#0d1117;border:1px solid #30363d;"></canvas>
+        <p>En développement...</p>
+      </div>
+      <div class="card" id="cardFunc">
+        <h3>Générateur de fonction</h3>
+        <div>
+          Cible: <select id="funcTarget"></select><br>
+          Fréquence (Hz): <input type="number" id="funcFreq" value="50"><br>
+          Amplitude (%): <input type="number" id="funcAmp" value="50"><br>
+          Offset (%): <input type="number" id="funcOff" value="0"><br>
+          Forme: <select id="funcWave">
+            <option value="sine">Sinus</option>
+            <option value="square">Carré</option>
+            <option value="triangle">Triangle</option>
+          </select><br>
+          <button onclick="updateFunc()">Appliquer</button>
+        </div>
+      </div>
+      <div class="card" id="cardIO">
+        <h3>IO disponibles</h3>
+        <ul id="ioList" style="list-style:none; padding-left:0;"></ul>
+      </div>
+    </div>
+    <div>
+      <button onclick="toggleLogs()" id="logsBtn">Afficher les logs</button>
+    </div>
+    <div id="logsPanel" style="display:none;"></div>
+  </div>
+  <script>
+    function login() {
+      const pin = document.getElementById('pinInput').value;
+      fetch('/login', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({pin:pin})
+      }).then(r => r.json()).then(data => {
+        if (data.success) {
+          document.getElementById('loginForm').style.display='none';
+          document.getElementById('dashboard').style.display='block';
+          loadIO();
+          loadFuncTargets();
+          loadDmmChannels();
+          startLogs();
+        } else {
+          document.getElementById('loginStatus').innerText='PIN incorrect';
+        }
+      }).catch(err => {
+        document.getElementById('loginStatus').innerText='Erreur: '+err;
+      });
+    }
+
+    function checkAuthResponse(resp) {
+      if (resp.status === 401) {
+        document.getElementById('loginForm').style.display='block';
+        document.getElementById('dashboard').style.display='none';
+        document.getElementById('loginStatus').innerText='Veuillez vous reconnecter';
+        throw new Error('Unauthorized');
+      }
+      return resp;
+    }
+
+    function loadIO() {
+      fetch('/api/io').then(checkAuthResponse).then(r => r.json()).then(data => {
+        const list = document.getElementById('ioList');
+        list.innerHTML='';
+        (data || []).forEach(io => {
+          const li = document.createElement('li');
+          li.textContent = io.id+': '+io.raw;
+          list.appendChild(li);
+        });
+      });
+    }
+
+    function loadDmmChannels() {
+      fetch('/api/dmm').then(checkAuthResponse).then(r => r.json()).then(data => {
+        const select = document.getElementById('dmmSelect');
+        select.innerHTML='';
+        if (data.channels) {
+          data.channels.forEach((ch, idx) => {
+            const opt = document.createElement('option');
+            opt.value = idx;
+            opt.textContent = ch.name;
+            select.appendChild(opt);
+          });
+        }
+        if (data.display) {
+          document.getElementById('dmmValues').textContent = data.display;
+        }
+      });
+    }
+
+    function loadFuncTargets() {
+      fetch('/api/config/funcgen').then(checkAuthResponse).then(r => r.json()).then(cfg => {
+        const select = document.getElementById('funcTarget');
+        select.innerHTML='';
+        if (cfg.targets) {
+          cfg.targets.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name || t.id;
+            select.appendChild(opt);
+          });
+        }
+      });
+    }
+
+    function updateFunc() {
+      const payload = {
+        target: document.getElementById('funcTarget').value,
+        freq: parseFloat(document.getElementById('funcFreq').value),
+        amplitude: parseFloat(document.getElementById('funcAmp').value),
+        offset: parseFloat(document.getElementById('funcOff').value),
+        wave: document.getElementById('funcWave').value
+      };
+      fetch('/api/funcgen', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(payload)
+      }).then(checkAuthResponse).then(r => r.json()).then(resp => {
+        if (!resp.success) {
+          alert('Erreur lors de la mise à jour du générateur');
+        }
+      }).catch(err => alert('Erreur réseau: '+err));
+    }
+
+    let logsVisible = false;
+    let ws;
+
+    function toggleLogs() {
+      logsVisible = !logsVisible;
+      document.getElementById('logsPanel').style.display = logsVisible ? 'block' : 'none';
+      document.getElementById('logsBtn').innerText = logsVisible ? 'Masquer les logs' : 'Afficher les logs';
+      if (logsVisible) {
+        startLogs();
+      } else if (ws) {
+        ws.close();
+      }
+    }
+
+    function startLogs() {
+      if (ws) {
+        ws.close();
+      }
+      ws = new WebSocket('ws://'+window.location.host+'/ws/logs');
+      ws.onmessage = (evt) => {
+        const panel = document.getElementById('logsPanel');
+        panel.textContent += evt.data+'\n';
+        panel.scrollTop = panel.scrollHeight;
+      };
+      ws.onclose = () => { ws = null; };
+    }
+
+    setInterval(() => {
+      if (document.getElementById('dashboard').style.display === 'block') {
+        loadIO();
+        loadDmmChannels();
+      }
+    }, 2000);
+  </script>
+</body>
+</html>)rawliteral";
+
+void ensureIndexHtmlPresent() {
+  if (LittleFS.exists("/index.html")) {
+    return;
+  }
+  File f = LittleFS.open("/index.html", "w");
+  if (!f) {
+    Logger::error("WS", "begin", "Failed to create /index.html");
+    return;
+  }
+  f.print(FPSTR(kDefaultIndexHtml));
+  f.close();
+  Logger::info("WS", "begin", "Restored default /index.html");
+}
+}  // namespace
 
 // DÃƒÂ©claration des membres statiques
 AsyncWebServer WebServer::_server(80);
@@ -21,6 +239,7 @@ bool WebServer::_started = false;
 bool WebServer::_hasAuthenticatedClient = false;
 
 bool WebServer::begin() {
+  ensureIndexHtmlPresent();
   _started = false;
   _hasAuthenticatedClient = false;
   // Initialise les appareils (multimÃƒÂ¨tre, oscilloscope, gÃƒÂ©nÃƒÂ©rateur)

@@ -17,7 +17,7 @@
 #include "network/UDPServer.h"
 
 namespace {
-constexpr char kAccessPointSsid[] = "MiniLabo";
+constexpr char kAccessPointSsidPrefix[] = "MiniLabo";
 const IPAddress kAccessPointIp(192, 168, 4, 1);
 const IPAddress kAccessPointGateway(192, 168, 4, 1);
 const IPAddress kAccessPointSubnet(255, 255, 255, 0);
@@ -42,6 +42,7 @@ unsigned long g_lastPeripheralTick = 0;
 unsigned long g_lastLoggerTick = 0;
 WiFiEventHandler g_apStationConnectedHandler;
 WiFiEventHandler g_apStationDisconnectedHandler;
+String g_accessPointSsid;
 
 constexpr unsigned long kPeripheralIntervalMs = 5;
 constexpr unsigned long kLoggerIntervalMs = 20;
@@ -74,6 +75,14 @@ String computeWifiHardware() {
 
   String phy = phyModeToString(WiFi.getPhyMode());
   return macStr + String(" C") + channel + String("/") + phy;
+}
+
+String computeAccessPointSsid() {
+  uint8_t mac[6];
+  WiFi.softAPmacAddress(mac);
+  String macCompact = formatMacCompact(mac);
+  String suffix = macCompact.substring(8);
+  return String(kAccessPointSsidPrefix) + "-" + suffix;
 }
 
 void enqueueOledMessage(const String& message) {
@@ -171,7 +180,9 @@ bool startAccessPointVerbose() {
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_AP);
 
-  if (!WiFi.softAP(kAccessPointSsid)) {
+  g_accessPointSsid = computeAccessPointSsid();
+
+  if (!WiFi.softAP(g_accessPointSsid.c_str())) {
     Serial.println(F("[MiniLabo] Impossible de démarrer le point d'accès"));
     g_status.wifiLine = F("WiFi: ERROR");
     g_status.wifiHardware = F("AP init failed");
@@ -186,12 +197,12 @@ bool startAccessPointVerbose() {
   }
 
   Serial.print(F("[MiniLabo] Point d'accès démarré : "));
-  Serial.println(kAccessPointSsid);
+  Serial.println(g_accessPointSsid);
   Serial.print(F("[MiniLabo] Adresse IP : "));
   Serial.println(WiFi.softAPIP());
-  g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
+  g_status.wifiLine = String(F("WiFi: AP ")) + g_accessPointSsid;
   g_status.wifiHardware = computeWifiHardware();
-  enqueueOledMessage(String(F("AP prêt: ")) + kAccessPointSsid);
+  enqueueOledMessage(String(F("AP prêt: ")) + g_accessPointSsid);
   return true;
 }
 
@@ -200,7 +211,9 @@ bool startAccessPointSilent() {
   WiFi.disconnect(true);
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_AP);
-  if (!WiFi.softAP(kAccessPointSsid)) {
+  g_accessPointSsid = computeAccessPointSsid();
+
+  if (!WiFi.softAP(g_accessPointSsid.c_str())) {
     g_status.wifiLine = F("WiFi: ERROR");
     g_status.wifiHardware = F("AP init failed");
     enqueueOledMessage(F("softAP restart failed"));
@@ -212,7 +225,7 @@ bool startAccessPointSilent() {
     enqueueOledMessage(F("softAP config failed"));
   }
 
-  g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
+  g_status.wifiLine = String(F("WiFi: AP ")) + g_accessPointSsid;
   g_status.wifiHardware = computeWifiHardware();
   return true;
 }
@@ -224,7 +237,10 @@ void maintainAccessPoint() {
     }
   }
   if (WiFi.getMode() == WIFI_AP) {
-    g_status.wifiLine = String(F("WiFi: AP ")) + kAccessPointSsid;
+    if (g_accessPointSsid.isEmpty()) {
+      g_accessPointSsid = computeAccessPointSsid();
+    }
+    g_status.wifiLine = String(F("WiFi: AP ")) + g_accessPointSsid;
     g_status.wifiHardware = computeWifiHardware();
   }
 }

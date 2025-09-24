@@ -72,6 +72,12 @@ const unsigned long ConfigStore::DEBOUNCE_MS   = 1000UL;
 const unsigned long ConfigStore::MIN_PERIOD_MS = 2000UL;
 
 void ConfigStore::begin() {
+  if (!LittleFS.exists("/configuration")) {
+    if (!LittleFS.mkdir("/configuration")) {
+      Logger::error("CFG", "begin", "Failed to create /configuration directory");
+    }
+  }
+
   // Initialise la liste des zones et leurs fichiers associÃ©s
   const AreaDefinition areas[] = {
     {"general",  "/configuration/general.json", 1024},
@@ -131,6 +137,7 @@ void ConfigStore::loadArea(const String& area) {
   if (!f) {
     Logger::warn("CFG", "loadArea", String("File not found, using defaults: ") + s.filename);
     applyDefaults(area, *s.document);
+    saveArea(area);
     return;
   }
   // DÃ©sÃ©rialisation du JSON
@@ -138,6 +145,7 @@ void ConfigStore::loadArea(const String& area) {
   if (err) {
     Logger::error("CFG", "loadArea", String("Failed to parse ") + s.filename + ": " + err.c_str());
     applyDefaults(area, *s.document);
+    saveArea(area);
   }
   f.close();
 }

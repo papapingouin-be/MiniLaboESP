@@ -48,27 +48,18 @@ struct WiFiStatusInfo {
 
 static WiFiStatusInfo g_wifiInfo = {String("WiFi: INIT"), String(), false, false};
 
-struct StationSettings {
-  bool enabled = false;
-  String ssid;
-  String password;
-};
-
 struct AccessPointSettings {
   uint8_t channel = 6;
   bool hidden = false;
   uint8_t maxClients = 4;
 };
 
-static StationSettings g_staSettings;
 static AccessPointSettings g_apSettings;
 static String g_apSSID;
 static String g_apPassword;
 static IPAddress g_apIp(192, 168, 4, 1);
 static IPAddress g_apGateway(192, 168, 4, 1);
 static IPAddress g_apSubnet(255, 255, 255, 0);
-static unsigned long g_lastReconnectAttempt = 0;
-static const unsigned long STA_RETRY_INTERVAL_MS = 60000;  // 60 s de délai entre deux tentatives
 static bool g_webAvailable = false;
 static uint16_t g_webPort = 0;
 static bool g_udpEnabled = false;
@@ -84,7 +75,6 @@ static void updateStatusDisplay(bool force = false);
 static void updateDisplayState();
 static String computeWebStatus();
 static String computeUdpStatus();
-static String describeStaStatus(wl_status_t status);
 static void loadWiFiSettings();
 static String computeApSSID(const String& configured);
 static String formatApStatusLine();
@@ -103,21 +93,6 @@ static void flushDeferredOledMessages();
  */
 static void loadWiFiSettings() {
   auto& net = ConfigStore::doc("network");
-
-  String mode = net["mode"].as<String>();
-  bool staRequested = (mode == "sta");
-  if (net["sta"]["enabled"].is<bool>()) {
-    staRequested = staRequested || net["sta"]["enabled"].as<bool>();
-  }
-
-  const char* staSsid = net["sta"]["ssid"].as<const char*>();
-  const char* staPass = net["sta"]["password"].as<const char*>();
-  if (!staSsid) staSsid = "";
-  if (!staPass) staPass = "";
-
-  g_staSettings.enabled = staRequested && strlen(staSsid) > 0;
-  g_staSettings.ssid = staSsid;
-  g_staSettings.password = staPass;
 
   String apConfigured = net["ap"]["ssid"].as<String>();
   g_apSSID = computeApSSID(apConfigured);
@@ -149,10 +124,9 @@ static void loadWiFiSettings() {
 /**
  * Configuration réseau initiale.
  *
- * Le mode est déterminé à partir de la configuration stockée dans
- * network.json.  Si le mode station (STA) échoue à se connecter,
- * l'appareil bascule automatiquement en point d'accès (AP) ouvert afin
- * de rester accessible pour la configuration initiale.
+ * Configure uniquement le point d'accès local à partir de
+ * network.json.  Le firmware ne tente plus de rejoindre un réseau STA
+ * afin de simplifier la mise en service.
  */
 static WiFiStatusInfo setupWiFi() {
   WiFiStatusInfo info = {String("WiFi: INIT"), String(), false, false};
@@ -165,48 +139,8 @@ static WiFiStatusInfo setupWiFi() {
   WiFi.mode(WIFI_OFF);
   delay(50);
 
-  bool staConnected = false;
-  if (g_staSettings.enabled) {
-    WiFi.mode(WIFI_STA);
-    WiFi.begin(g_staSettings.ssid.c_str(), g_staSettings.password.c_str());
-    g_lastReconnectAttempt = millis();
-    Logger::info("NET", "setupWiFi", String("Connecting to ") + g_staSettings.ssid);
-
-    unsigned long start = millis();
-    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) {
-      delay(200);
-      yield();
-    }
-
-    if (WiFi.status() == WL_CONNECTED) {
-      Logger::info("NET", "setupWiFi", String("Connected, IP ") + WiFi.localIP().toString());
-      info.line = String("WiFi: STA ") + WiFi.localIP().toString();
-      info.ready = true;
-      staConnected = true;
-    } else {
-      Logger::warn("NET", "setupWiFi", "STA connect failed, enabling AP");
-    }
-  }
-
-  // L'AP est toujours ouvert afin de garantir un accès local.
-  WiFi.mode((staConnected || g_staSettings.enabled) ? WIFI_AP_STA : WIFI_AP);
+  WiFi.mode(WIFI_AP);
   bool apStarted = startAccessPoint();
-
-  if (staConnected) {
-    if (apStarted) {
-      Logger::info("NET", "setupWiFi",
-                   String("Fallback AP ready, SSID ") + g_apSSID +
-                   " ch " + g_apSettings.channel +
-                   (g_apPassword.length() >= 8 ? " WPA2" : " OPEN"));
-      info.apMode = true;
-    } else {
-      Logger::warn("NET", "setupWiFi", "Failed to start fallback AP");
-      WiFi.mode(WIFI_STA);
-      info.apMode = false;
-    }
-    info.hardware = computeWifiHardware();
-    return info;
-  }
 
   if (apStarted) {
     Logger::info("NET", "setupWiFi",
@@ -214,11 +148,8 @@ static WiFiStatusInfo setupWiFi() {
                  (g_apPassword.length() >= 8 ? " WPA2" : " OPEN"));
     info.line = formatApStatusLine();
     info.hardware = computeWifiHardware();
-    info.ready = false;
+    info.ready = true;
     info.apMode = true;
-    if (g_staSettings.enabled) {
-      g_lastReconnectAttempt = millis();
-    }
     return info;
   }
 
@@ -227,7 +158,6 @@ static WiFiStatusInfo setupWiFi() {
   info.hardware = String("AP init failed");
   info.ready = false;
   info.apMode = false;
-  g_staSettings.enabled = false;
   return info;
 }
 
@@ -264,77 +194,41 @@ static String byteToUpperHex(uint8_t value) {
 }
 
 static bool startAccessPoint() {
-  // S'assure que le mode Wi-Fi inclut bien l'AP avant toute configuration.
-  WiFiMode_t desiredMode = g_staSettings.enabled ? WIFI_AP_STA : WIFI_AP;
-  if (WiFi.getMode() != desiredMode) {
-    WiFi.mode(desiredMode);
+  if (WiFi.getMode() != WIFI_AP) {
+    WiFi.mode(WIFI_AP);
     delay(10);
   }
 
-  // Coupe proprement l'AP courant pour éviter les états incohérents
   WiFi.softAPdisconnect(true);
   delay(100);
 
-  const char* passphrase = nullptr;
-  if (g_apPassword.length() >= 8) {
-    passphrase = g_apPassword.c_str();
+  if (!WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet)) {
+    Logger::warn("NET", "startAccessPoint", "softAPConfig failed");
+    enqueueOledMessage("AP config failed");
   }
 
-  auto applyApConfig = [&](const String& attemptTag) {
-    if (!WiFi.softAPConfig(g_apIp, g_apGateway, g_apSubnet)) {
-      Logger::warn("NET", "startAccessPoint",
-                   String("softAPConfig failed during ") + attemptTag +
-                   ", keeping previous IP");
-      enqueueOledMessage(String("AP config failed (") + attemptTag + ")");
-      return false;
-    }
-    return true;
-  };
+  const char* passphrase = (g_apPassword.length() >= 8) ? g_apPassword.c_str() : nullptr;
 
-  auto attemptStart = [&](const char* attemptTag) {
-    applyApConfig(String(attemptTag) + " pre");
+  bool started = WiFi.softAP(g_apSSID.c_str(),
+                             passphrase,
+                             g_apSettings.channel,
+                             g_apSettings.hidden,
+                             g_apSettings.maxClients);
 
-    bool started = WiFi.softAP(g_apSSID.c_str(),
-                               passphrase,
-                               g_apSettings.channel,
-                               g_apSettings.hidden,
-                               g_apSettings.maxClients);
-    if (!started) {
-      enqueueOledMessage(String("AP start failed (") + attemptTag + ")");
-      return false;
-    }
-
-    applyApConfig(String(attemptTag) + " post");
-
-    if (!waitForSoftApReady()) {
-      Logger::warn("NET", "startAccessPoint",
-                   String("softAP did not acquire IP during ") + attemptTag);
-      WiFi.softAPdisconnect(true);
-      enqueueOledMessage(String("AP no IP (") + attemptTag + ")");
-      return false;
-    }
-    return true;
-  };
-
-  bool started = attemptStart("initial start");
   if (!started) {
-    Logger::warn("NET", "startAccessPoint", "Initial softAP start failed, retrying");
-    delay(100);
-    // Réinitialise le mode avant une seconde tentative afin d'éviter les états
-    // incohérents de l'ESP8266.
-    WiFi.mode(desiredMode);
-    delay(10);
-    started = attemptStart("retry");
-  }
-
-  if (started) {
-    WiFi.setSleepMode(WIFI_NONE_SLEEP);
-    delay(100);
-  } else {
     Logger::error("NET", "startAccessPoint", "softAP start failed");
     enqueueOledMessage("softAP start failed");
+    return false;
   }
-  return started;
+
+  if (!waitForSoftApReady()) {
+    Logger::warn("NET", "startAccessPoint", "softAP did not acquire IP");
+    enqueueOledMessage("AP no IP");
+  }
+
+  WiFi.setSleepMode(WIFI_NONE_SLEEP);
+  delay(100);
+  return true;
 }
 
 static bool waitForSoftApReady(unsigned long timeoutMs) {
@@ -408,18 +302,6 @@ static String formatMacCompact(const uint8_t* mac) {
   return String(buf);
 }
 
-static String describeStaStatus(wl_status_t status) {
-  switch (status) {
-    case WL_NO_SSID_AVAIL:   return String("WiFi: STA no SSID");
-    case WL_CONNECT_FAILED:  return String("WiFi: STA failed");
-    case WL_WRONG_PASSWORD:  return String("WiFi: wrong pass");
-    case WL_CONNECTION_LOST: return String("WiFi: STA lost");
-    case WL_DISCONNECTED:    return String("WiFi: STA disc");
-    case WL_IDLE_STATUS:     return String("WiFi: STA idle");
-    default:                 return String("WiFi: STA ...");
-  }
-}
-
 static String computeWebStatus() {
   if (g_webAvailable) {
     return String("Web: ON :") + g_webPort;
@@ -470,14 +352,9 @@ static void updateStatusDisplay(bool force) {
 }
 
 static void maintainWiFi() {
-  unsigned long now = millis();
-  bool staConnected = WiFi.status() == WL_CONNECTED;
-  bool apActive = WiFi.getMode() == WIFI_AP || WiFi.getMode() == WIFI_AP_STA;
-  bool apClients = apActive && WiFi.softAPgetStationNum() > 0;
-  bool networkReady = staConnected || apClients;
+  bool apActive = WiFi.getMode() == WIFI_AP;
 
-  if (!staConnected && !apActive) {
-    WiFi.mode(g_staSettings.enabled ? WIFI_AP_STA : WIFI_AP);
+  if (!apActive) {
     if (startAccessPoint()) {
       Logger::info("NET", "maintainWiFi",
                    String("AP restarted, SSID ") + g_apSSID + " ch " + g_apSettings.channel +
@@ -488,20 +365,9 @@ static void maintainWiFi() {
     }
   }
 
-  String line;
-  if (staConnected) {
-    line = String("WiFi: STA ") + WiFi.localIP().toString();
-  } else if (apClients) {
-    line = formatApStatusLine();
-  } else if (g_staSettings.enabled) {
-    line = describeStaStatus(WiFi.status());
-  } else if (apActive) {
-    line = formatApStatusLine();
-  } else {
-    line = String("WiFi: OFF");
-  }
-
+  String line = apActive ? formatApStatusLine() : String("WiFi: OFF");
   String hardware = computeWifiHardware();
+  bool networkReady = apActive;
 
   bool changed = (line != g_wifiInfo.line) ||
                  (g_wifiInfo.hardware != hardware) ||
@@ -516,20 +382,6 @@ static void maintainWiFi() {
     updateStatusDisplay(true);
   } else {
     updateStatusDisplay(false);
-  }
-
-  if (g_staSettings.enabled && !staConnected) {
-    if (apClients) {
-      // Un client est connecté sur l'AP : on diffère toute nouvelle tentative
-      // pour éviter les coupures du SSID.
-      g_lastReconnectAttempt = now;
-    } else if (now - g_lastReconnectAttempt >= STA_RETRY_INTERVAL_MS) {
-      Logger::info("NET", "maintainWiFi", "Retrying STA connection");
-      WiFi.mode(WIFI_AP_STA);
-      startAccessPoint();
-      WiFi.begin(g_staSettings.ssid.c_str(), g_staSettings.password.c_str());
-      g_lastReconnectAttempt = now;
-    }
   }
 }
 
@@ -568,7 +420,7 @@ void setup() {
   // Chargement de toutes les configurations avant d'accéder au réseau
   ConfigStore::begin();
 
-  // Setup WiFi (STA ou AP avec fallback)
+  // Setup WiFi (mode AP simplifié)
   g_wifiInfo = setupWiFi();
 
   // Initialisation de l'afficheur OLED

@@ -4,6 +4,10 @@
 
 #include <vector>
 
+extern "C" {
+#include <user_interface.h>
+}
+
 #include "core/ConfigStore.h"
 #include "core/Logger.h"
 #include "core/IORegistry.h"
@@ -21,6 +25,11 @@ constexpr char kAccessPointSsidPrefix[] = "MiniLabo";
 const IPAddress kAccessPointIp(192, 168, 4, 1);
 const IPAddress kAccessPointGateway(192, 168, 4, 1);
 const IPAddress kAccessPointSubnet(255, 255, 255, 0);
+
+int generateSessionPin() {
+  uint32_t value = os_random();
+  return static_cast<int>(value % 9000U) + 1000;
+}
 
 struct SystemStatus {
   String wifiLine{"WiFi: INIT"};
@@ -299,7 +308,9 @@ void setup() {
   ConfigStore::begin();
 
   auto& generalDoc = ConfigStore::doc("general");
-  g_sessionPin = generalDoc["pin"].as<int>();
+  g_sessionPin = generateSessionPin();
+  generalDoc["pin"] = g_sessionPin;
+  ConfigStore::requestSave("general");
 
   bool apStarted = startAccessPointVerbose();
   if (!apStarted) {

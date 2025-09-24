@@ -45,14 +45,35 @@ bool WebServer::begin() {
   });
   _server.addHandler(&_wsLogs);
 
+  // Gestion du corps des requêtes JSON (collecte dans request->_tempObject)
+  _server.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data,
+                           size_t len, size_t index, size_t total) {
+    if (request->method() != HTTP_POST && request->method() != HTTP_PUT) {
+      return;
+    }
+    String *body = static_cast<String *>(request->_tempObject);
+    if (index == 0 || body == nullptr) {
+      body = new String();
+      if (total > 0) {
+        body->reserve(total);
+      }
+      request->_tempObject = body;
+    }
+    if (!body) {
+      return;
+    }
+    String chunk(reinterpret_cast<const char *>(data), len);
+    body->concat(chunk);
+  });
+
   // Route statique pour servir les fichiers depuis LittleFS
   _server.serveStatic("/", LittleFS, "/").setDefaultFile("/index.html");
 
   // Route POST /login
   _server.on("/login", HTTP_POST, [](AsyncWebServerRequest *request) {
     // Lire le corps JSON
-    if (request->hasArg("body")) {
-      String body = request->arg("body");
+    String body = readRequestBody(request);
+    if (body.length()) {
       DynamicJsonDocument doc(128);
       DeserializationError err = deserializeJson(doc, body);
       if (err) {
@@ -131,11 +152,11 @@ bool WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    if (!request->hasArg("body")) {
+    String body = readRequestBody(request);
+    if (!body.length()) {
       request->send(400, "application/json", "{\"error\":\"Missing body\"}");
       return;
     }
-    String body = request->arg("body");
     DynamicJsonDocument doc(256);
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -199,11 +220,11 @@ bool WebServer::begin() {
       request->send(405, "application/json", "{\"error\":\"Method Not Allowed\"}");
       return;
     }
-    if (!request->hasArg("body")) {
+    String body = readRequestBody(request);
+    if (!body.length()) {
       request->send(400, "application/json", "{\"error\":\"Missing body\"}");
       return;
     }
-    String body = request->arg("body");
     DynamicJsonDocument doc(1024);
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
@@ -258,6 +279,17 @@ bool WebServer::checkAuth(AsyncWebServerRequest *request) {
   if (end >= 0) val = val.substring(0, end);
   val.trim();
   return val == "1";
+}
+
+String WebServer::readRequestBody(AsyncWebServerRequest *request) {
+  if (!request || !request->_tempObject) {
+    return String();
+  }
+  String *body = static_cast<String *>(request->_tempObject);
+  String result = *body;
+  delete body;
+  request->_tempObject = nullptr;
+  return result;
 }
 
 void WebServer::logCallback(const String& line) {

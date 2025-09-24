@@ -24,7 +24,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     body { background:#0d1117; color:#d0d0d0; font-family:Arial,Helvetica,sans-serif; margin:0; }
     header { padding:1rem; text-align:center; font-size:1.5rem; background:#161b22; border-bottom:1px solid #30363d; }
     #loginForm { width:300px; margin:5rem auto; padding:2rem; background:#161b22; border-radius:0.5rem; box-shadow:0 0 10px rgba(0,0,0,0.5); }
-    #loginForm input { width:100%; padding:0.5rem; margin:0.5rem 0; color:#0d1117; }
+    #loginForm input { width:100%; padding:0.5rem; margin:0.5rem 0; color:#f6f8fa; }
     #loginForm .numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:0.5rem; margin-top:1rem; }
     #loginForm .numpad button { background:#30363d; padding:0.75rem; font-size:1.2rem; }
     #loginForm .numpad button:hover { background:#484f58; }
@@ -359,10 +359,24 @@ bool WebServer::begin() {
         return;
       }
       String pinStr = doc["pin"].as<String>();
-      int pinVal = pinStr.toInt();
+      pinStr.trim();
+      String sanitized;
+      sanitized.reserve(4);
+      for (size_t i = 0; i < pinStr.length() && sanitized.length() < 4; ++i) {
+        char c = pinStr.charAt(i);
+        if (c >= '0' && c <= '9') {
+          sanitized += c;
+        }
+      }
       auto& gdoc = ConfigStore::doc("general");
-      int stored = gdoc["pin"].as<int>();
-      if (pinVal == stored) {
+      String expected = gdoc["pin"].as<String>();
+      if (!expected.length()) {
+        expected = String(gdoc["pin"].as<int>());
+      }
+      while (expected.length() < 4) {
+        expected = String('0') + expected;
+      }
+      if (sanitized == expected) {
         // Auth ok : dÃƒÂ©finir cookie
         _hasAuthenticatedClient = true;
         AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"success\":true}");

@@ -16,7 +16,7 @@ namespace OledPin {
   void begin();
   /** Affiche des informations de statut (WiFi, services) pendant le boot. */
   void showStatus(const String& wifi,
-                  const String& wifiDetail,
+                  const String& wifiHardware,
                   const String& web,
                   const String& udp);
   /** Affiche le code PIN à l'écran. */

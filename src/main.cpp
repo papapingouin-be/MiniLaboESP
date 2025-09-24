@@ -37,16 +37,15 @@
 
 // Wi‑Fi mode fallback constants
 static const char* DEFAULT_AP_SSID    = "MiniLabo";
-static const char* DEFAULT_AP_PASS    = "12345678";
 
 struct WiFiStatusInfo {
   String line;
-  String detail;
+  String hardware;
   bool ready;
   bool apMode;
 };
 
-static WiFiStatusInfo g_wifiInfo = {String("WiFi: INIT"), String("WiFi init"), false, false};
+static WiFiStatusInfo g_wifiInfo = {String("WiFi: INIT"), String(), false, false};
 static bool g_staConfigured = false;
 static String g_staSSID;
 static String g_staPass;
@@ -65,13 +64,7 @@ static uint16_t g_webPort = 0;
 static bool g_udpEnabled = false;
 static bool g_udpRunning = false;
 static uint16_t g_udpPort = 0;
-static int g_pinCode = 0;
 static unsigned long g_lastStatusRefresh = 0;
-static unsigned long g_lastIoRefresh = 0;
-static bool g_pinShown = false;
-
-enum class DisplayState { STATUS, PIN, IO };
-static DisplayState g_displayState = DisplayState::STATUS;
 
 static WiFiStatusInfo setupWiFi();
 static void maintainWiFi();
@@ -83,8 +76,9 @@ static String describeStaStatus(wl_status_t status);
 static String computeApSSID(const String& configured);
 static String byteToUpperHex(uint8_t value);
 static bool startAccessPoint();
-static String computeWifiDetail();
-static String shortenLabel(const String& text, uint8_t maxLen = 12);
+static String computeWifiHardware();
+static String phyModeToString(WiFiPhyMode_t mode);
+static String formatMacCompact(const uint8_t* mac);
 
 /**
  * Configuration réseau initiale.
@@ -95,7 +89,7 @@ static String shortenLabel(const String& text, uint8_t maxLen = 12);
  * rester accessible pour la configuration initiale.
  */
 static WiFiStatusInfo setupWiFi() {
-  WiFiStatusInfo info = {String("WiFi: INIT"), String("Initialisation"), false, false};
+  WiFiStatusInfo info = {String("WiFi: INIT"), String(), false, false};
   auto& net = ConfigStore::doc("network");
   String mode = net["mode"].as<String>();
   bool staRequested = (mode == "sta");
@@ -111,14 +105,7 @@ static WiFiStatusInfo setupWiFi() {
   g_staPass = staPass;
 
   String apConfigured = net["ap"]["ssid"].as<String>();
-  g_apPass = net["ap"]["password"].as<String>();
-  if (g_apPass.length() > 0 && g_apPass.length() < 8) {
-    // Une passphrase WPA doit comporter au moins 8 caractères.
-    // Si l'utilisateur souhaite un réseau ouvert, il suffit de laisser
-    // le champ vide. Toute autre valeur trop courte retombe sur la valeur
-    // par défaut afin de garantir un AP fonctionnel.
-    g_apPass = DEFAULT_AP_PASS;
-  }
+  g_apPass = "";  // Point d'accès ouvert sans chiffrement
   int configuredChannel = net["ap"]["channel"].as<int>();
   if (configuredChannel < 1 || configuredChannel > 13) {
     configuredChannel = 6;
@@ -150,7 +137,7 @@ static WiFiStatusInfo setupWiFi() {
       g_apSSID = computeApSSID(apConfigured);
       Logger::info("NET", "setupWiFi", String("Connected, IP ") + WiFi.localIP().toString());
       info.line = String("WiFi: STA ") + WiFi.localIP().toString();
-      info.detail = computeWifiDetail();
+      info.hardware = computeWifiHardware();
       info.ready = true;
 
       // Conserve un point d'accès de secours même en mode STA afin
@@ -177,7 +164,7 @@ static WiFiStatusInfo setupWiFi() {
     Logger::info("NET", "setupWiFi",
                  String("AP started, SSID ") + g_apSSID + " ch " + g_apChannel);
     info.line = String("WiFi: AP ") + g_apSSID;
-    info.detail = computeWifiDetail();
+    info.hardware = computeWifiHardware();
     info.ready = false;
     info.apMode = true;
     if (g_staConfigured) {
@@ -187,7 +174,7 @@ static WiFiStatusInfo setupWiFi() {
   }
   Logger::error("NET", "setupWiFi", "Failed to start AP");
   info.line = String("WiFi: ERROR");
-  info.detail = String("AP init failed");
+  info.hardware = String("AP init failed");
   info.ready = false;
   info.apMode = false;
   g_staConfigured = false;
@@ -243,51 +230,36 @@ static bool startAccessPoint() {
   return started;
 }
 
-static String shortenLabel(const String& text, uint8_t maxLen) {
-  String trimmed = text;
-  trimmed.trim();
-  if (maxLen < 2) {
-    maxLen = 2;
+static String computeWifiHardware() {
+  uint8_t mac[6];
+  WiFi.softAPmacAddress(mac);
+  String macStr = String("M") + formatMacCompact(mac);
+
+  int channel = WiFi.channel();
+  if (channel <= 0) {
+    channel = g_apChannel;
   }
-  if (trimmed.length() <= maxLen) {
-    return trimmed;
-  }
-  return trimmed.substring(0, maxLen - 1) + String("…");
+
+  const char* phy = phyModeToString(WiFi.getPhyMode());
+
+  String hardware = macStr + String(" C") + channel + String("/") + phy;
+  return hardware;
 }
 
-static String computeWifiDetail() {
-  wl_status_t status = WiFi.status();
-  if (status == WL_CONNECTED) {
-    String ssid = shortenLabel(WiFi.SSID(), 12);
-    long rssi = WiFi.RSSI();
-    int channel = WiFi.channel();
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%s %lddBm C%d",
-             ssid.c_str(), rssi, channel);
-    return String(buf);
+static String phyModeToString(WiFiPhyMode_t mode) {
+  switch (mode) {
+    case WIFI_PHY_MODE_11B: return "11B";
+    case WIFI_PHY_MODE_11G: return "11G";
+    case WIFI_PHY_MODE_11N: return "11N";
+    default:                return "UNK";
   }
+}
 
-  WiFiMode_t mode = WiFi.getMode();
-  if (mode == WIFI_AP || mode == WIFI_AP_STA) {
-    int channel = WiFi.channel();
-    if (channel <= 0) {
-      channel = g_apChannel;
-    }
-    int clients = WiFi.softAPgetStationNum();
-    const char* security = (g_apPass.length() == 0) ? "OPEN" : "WPA2";
-    String ssid = shortenLabel(g_apSSID, 12);
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%s C%d %s Cl:%d",
-             ssid.c_str(), channel, security, clients);
-    return String(buf);
-  }
-
-  if (g_staConfigured) {
-    String ssid = shortenLabel(g_staSSID, 12);
-    return String("STA: ") + ssid;
-  }
-
-  return String("WiFi en veille");
+static String formatMacCompact(const uint8_t* mac) {
+  char buf[13];
+  snprintf(buf, sizeof(buf), "%02X%02X%02X%02X%02X%02X",
+           mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+  return String(buf);
 }
 
 static String describeStaStatus(wl_status_t status) {
@@ -330,22 +302,22 @@ static void updateStatusDisplay(bool force) {
   if (g_wifiInfo.apMode) {
     wifiLine += String(" (") + WiFi.softAPgetStationNum() + ")";
   }
-  String wifiDetail = g_wifiInfo.detail;
-  if (wifiDetail.length() == 0) {
-    wifiDetail = computeWifiDetail();
+  String wifiHardware = g_wifiInfo.hardware;
+  if (wifiHardware.length() == 0) {
+    wifiHardware = computeWifiHardware();
   }
   String webLine = computeWebStatus();
   String udpLine = computeUdpStatus();
 
   static String prevWifi;
-  static String prevWifiDetail;
+  static String prevWifiHardware;
   static String prevWeb;
   static String prevUdp;
 
-  if (force || wifiLine != prevWifi || wifiDetail != prevWifiDetail || webLine != prevWeb || udpLine != prevUdp) {
-    OledPin::showStatus(wifiLine, wifiDetail, webLine, udpLine);
+  if (force || wifiLine != prevWifi || wifiHardware != prevWifiHardware || webLine != prevWeb || udpLine != prevUdp) {
+    OledPin::showStatus(wifiLine, wifiHardware, webLine, udpLine);
     prevWifi = wifiLine;
-    prevWifiDetail = wifiDetail;
+    prevWifiHardware = wifiHardware;
     prevWeb = webLine;
     prevUdp = udpLine;
   }
@@ -382,14 +354,14 @@ static void maintainWiFi() {
     line = String("WiFi: OFF");
   }
 
-  String detail = computeWifiDetail();
+  String hardware = computeWifiHardware();
 
   bool changed = (line != g_wifiInfo.line) ||
-                 (g_wifiInfo.detail != detail) ||
+                 (g_wifiInfo.hardware != hardware) ||
                  (g_wifiInfo.apMode != apActive) ||
                  (g_wifiInfo.ready != networkReady);
   g_wifiInfo.line = line;
-  g_wifiInfo.detail = detail;
+  g_wifiInfo.hardware = hardware;
   g_wifiInfo.apMode = apActive;
   g_wifiInfo.ready = networkReady;
 
@@ -407,7 +379,8 @@ static void maintainWiFi() {
     } else if (now - g_lastReconnectAttempt >= STA_RETRY_INTERVAL_MS) {
       Logger::info("NET", "maintainWiFi", "Retrying STA connection");
       WiFi.mode(WIFI_AP_STA);
-      WiFi.softAP(g_apSSID.c_str(), g_apPass.c_str());
+      const char* passphrase = g_apPass.length() == 0 ? nullptr : g_apPass.c_str();
+      WiFi.softAP(g_apSSID.c_str(), passphrase);
       WiFi.begin(g_staSSID.c_str(), g_staPass.c_str());
       g_lastReconnectAttempt = now;
     }
@@ -415,40 +388,7 @@ static void maintainWiFi() {
 }
 
 static void updateDisplayState() {
-  if (!g_wifiInfo.ready) {
-    if (g_displayState != DisplayState::STATUS) {
-      g_displayState = DisplayState::STATUS;
-      g_pinShown = false;
-      updateStatusDisplay(true);
-    }
-    return;
-  }
-
-  if (g_displayState == DisplayState::STATUS) {
-    g_displayState = DisplayState::PIN;
-    if (!g_pinShown) {
-      OledPin::showPIN(g_pinCode);
-      g_pinShown = true;
-    }
-    return;
-  }
-
-  if (g_displayState == DisplayState::PIN) {
-    if (WebServer::hasAuthenticatedClient()) {
-      g_displayState = DisplayState::IO;
-      g_lastIoRefresh = 0;
-    }
-    return;
-  }
-
-  if (g_displayState == DisplayState::IO) {
-    unsigned long now = millis();
-    if (now - g_lastIoRefresh >= 1000) {
-      auto ios = IORegistry::list();
-      OledPin::showIOValues(ios);
-      g_lastIoRefresh = now;
-    }
-  }
+  updateStatusDisplay(false);
 }
 
 void setup() {
@@ -488,13 +428,7 @@ void setup() {
   g_udpEnabled = UDPServer::isEnabled();
   g_udpPort = UDPServer::port();
 
-  auto& general = ConfigStore::doc("general");
-  g_pinCode = general["pin"].as<int>();
-
-  g_displayState = DisplayState::STATUS;
-  g_pinShown = false;
   g_lastStatusRefresh = 0;
-  g_lastIoRefresh = 0;
 
   updateStatusDisplay(true);
 

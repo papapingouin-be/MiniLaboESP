@@ -30,6 +30,11 @@ struct SystemStatus {
 };
 
 SystemStatus g_status;
+enum class OledDisplayMode {
+  STATUS,
+  IO
+};
+OledDisplayMode g_oledMode = OledDisplayMode::STATUS;
 bool g_webAvailable = false;
 uint16_t g_webPort = 0;
 bool g_udpEnabled = false;
@@ -43,9 +48,12 @@ unsigned long g_lastLoggerTick = 0;
 WiFiEventHandler g_apStationConnectedHandler;
 WiFiEventHandler g_apStationDisconnectedHandler;
 String g_accessPointSsid;
+int g_sessionPin = 0;
+unsigned long g_lastIoDisplay = 0;
 
 constexpr unsigned long kPeripheralIntervalMs = 5;
 constexpr unsigned long kLoggerIntervalMs = 20;
+constexpr unsigned long kOledIoRefreshMs = 1000;
 
 String formatMacCompact(const uint8_t* mac) {
   char buf[13];
@@ -109,6 +117,14 @@ void flushDeferredOledMessages() {
   g_deferredOledMessages.clear();
 }
 
+void refreshIoDisplay() {
+  if (!g_oledInitialised) {
+    return;
+  }
+  auto ios = IORegistry::list();
+  OledPin::showIOValues(ios);
+}
+
 void updateServiceStatus() {
   if (g_webAvailable) {
     g_status.webLine = String(F("Web: ON :")) + g_webPort;
@@ -127,6 +143,10 @@ void updateServiceStatus() {
 
 void updateStatusDisplay(bool force) {
   if (!g_oledInitialised) {
+    return;
+  }
+
+  if (g_oledMode != OledDisplayMode::STATUS) {
     return;
   }
 
@@ -278,6 +298,9 @@ void setup() {
 
   ConfigStore::begin();
 
+  auto& generalDoc = ConfigStore::doc("general");
+  g_sessionPin = generalDoc["pin"].as<int>();
+
   bool apStarted = startAccessPointVerbose();
   if (!apStarted) {
     Logger::error("NET", "setup", "Failed to start AP");
@@ -288,6 +311,7 @@ void setup() {
   OledPin::begin();
   g_oledInitialised = true;
   flushDeferredOledMessages();
+  OledPin::setPinCode(g_sessionPin);
 
   Logger::begin();
   Logger::setLogCallback(handleLogLineForDisplay);
@@ -330,7 +354,26 @@ void loop() {
   }
 
   updateServiceStatus();
-  updateStatusDisplay(false);
+  bool hasClient = WebServer::hasAuthenticatedClient();
+  OledDisplayMode desiredMode = hasClient ? OledDisplayMode::IO : OledDisplayMode::STATUS;
+  if (desiredMode != g_oledMode) {
+    g_oledMode = desiredMode;
+    if (g_oledMode == OledDisplayMode::STATUS) {
+      g_lastIoDisplay = 0;
+      updateStatusDisplay(true);
+    } else {
+      g_lastIoDisplay = 0;
+    }
+  }
+
+  if (g_oledMode == OledDisplayMode::STATUS) {
+    updateStatusDisplay(false);
+  } else {
+    if (g_lastIoDisplay == 0 || now - g_lastIoDisplay >= kOledIoRefreshMs) {
+      refreshIoDisplay();
+      g_lastIoDisplay = now;
+    }
+  }
   OledPin::loop();
 
   yield();

@@ -8,6 +8,11 @@
     header { padding:1rem; text-align:center; font-size:1.5rem; background:#161b22; border-bottom:1px solid #30363d; }
     #loginForm { width:300px; margin:5rem auto; padding:2rem; background:#161b22; border-radius:0.5rem; box-shadow:0 0 10px rgba(0,0,0,0.5); }
     #loginForm input { width:100%; padding:0.5rem; margin:0.5rem 0; color:#0d1117; }
+    #loginForm .numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:0.5rem; margin-top:1rem; }
+    #loginForm .numpad button { background:#30363d; padding:0.75rem; font-size:1.2rem; }
+    #loginForm .numpad button:hover { background:#484f58; }
+    #loginForm .numpad-actions { display:flex; gap:0.5rem; margin-top:0.5rem; }
+    #loginForm .numpad-actions button { flex:1; background:#484f58; }
     #dashboard { display:none; padding:1rem; }
     .cards { display:flex; flex-wrap:wrap; gap:1rem; }
     .card { background:#161b22; border:1px solid #30363d; border-radius:0.5rem; padding:1rem; flex:1; min-width:250px; }
@@ -22,8 +27,26 @@
   <div id="loginForm">
     <h2>Connexion</h2>
     <label for="pinInput">Code PIN&nbsp;:</label><br>
-    <input type="password" id="pinInput" maxlength="4"><br>
-    <button onclick="login()">Se connecter</button>
+    <input type="password" id="pinInput" maxlength="4" inputmode="numeric" pattern="[0-9]*"><br>
+    <div class="numpad">
+      <button type="button" onclick="appendDigit('1')">1</button>
+      <button type="button" onclick="appendDigit('2')">2</button>
+      <button type="button" onclick="appendDigit('3')">3</button>
+      <button type="button" onclick="appendDigit('4')">4</button>
+      <button type="button" onclick="appendDigit('5')">5</button>
+      <button type="button" onclick="appendDigit('6')">6</button>
+      <button type="button" onclick="appendDigit('7')">7</button>
+      <button type="button" onclick="appendDigit('8')">8</button>
+      <button type="button" onclick="appendDigit('9')">9</button>
+      <div></div>
+      <button type="button" onclick="appendDigit('0')">0</button>
+      <div></div>
+    </div>
+    <div class="numpad-actions">
+      <button type="button" onclick="clearPin()">Effacer</button>
+      <button type="button" onclick="backspacePin()">⌫</button>
+    </div>
+    <button type="button" onclick="login()">Se connecter</button>
     <p id="loginStatus" style="color:red;"></p>
   </div>
   <div id="dashboard">
@@ -66,9 +89,46 @@
     <div id="logsPanel" style="display:none;"></div>
   </div>
   <script>
+    const pinInput = document.getElementById('pinInput');
+
+    function sanitizePin(value) {
+      return (value || '').replace(/[^0-9]/g, '').slice(0, 4);
+    }
+
+    function appendDigit(digit) {
+      pinInput.value = sanitizePin(pinInput.value + digit);
+      pinInput.focus();
+    }
+
+    function clearPin() {
+      pinInput.value = '';
+      pinInput.focus();
+    }
+
+    function backspacePin() {
+      pinInput.value = pinInput.value.slice(0, -1);
+      pinInput.focus();
+    }
+
+    pinInput.addEventListener('input', (event) => {
+      const sanitized = sanitizePin(event.target.value);
+      if (sanitized !== event.target.value) {
+        event.target.value = sanitized;
+      }
+    });
+
+    pinInput.addEventListener('keyup', (event) => {
+      if (event.key === 'Enter') {
+        login();
+      }
+    });
+
+    pinInput.focus();
+
     // Fonction de connexion : envoie le PIN au serveur et gère la réponse
     function login() {
-      const pin = document.getElementById('pinInput').value;
+      const pin = sanitizePin(pinInput.value);
+      pinInput.value = pin;
       fetch('/login', {
         method:'POST',
         headers:{'Content-Type':'application/json'},

@@ -25,6 +25,8 @@ namespace OledPin {
   void pushErrorMessage(const String& message);
   /** Affiche le code PIN à l'écran. */
   void showPIN(int pin);
+  /** Définit le code PIN à afficher dans le bandeau de statut. */
+  void setPinCode(int pin);
   /** Affiche un aperçu des IO après authentification. */
   void showIOValues(const std::vector<IOBase*>& ios);
 }

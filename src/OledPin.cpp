@@ -25,6 +25,8 @@ namespace {
   String _wifiHardwareLine;
   String _webLine;
   String _udpLine;
+  bool _pinVisible = false;
+  String _pinDigits;
 
   std::deque<String> _errorMessages;
   String _scrollText;
@@ -58,6 +60,19 @@ namespace {
     _oled.drawStr(0, 26, _wifiHardwareLine.c_str());
     _oled.drawStr(0, 40, _webLine.c_str());
     _oled.drawStr(0, 54, _udpLine.c_str());
+
+    if (_pinVisible) {
+      _oled.setFont(u8g2_font_6x12_tf);
+      _oled.drawStr(84, 12, "PIN");
+      _oled.setFont(u8g2_font_logisoso16_tn);
+      int16_t pinWidth = _oled.getStrWidth(_pinDigits.c_str());
+      int16_t baseX = 84 + (44 - pinWidth) / 2;
+      if (baseX < 84) {
+        baseX = 84;
+      }
+      _oled.drawStr(baseX, 60, _pinDigits.c_str());
+      _oled.setFont(u8g2_font_6x12_tf);
+    }
 
     const int baseline = 62;
     if (_scrollText.length() > 0) {
@@ -93,6 +108,8 @@ void OledPin::begin() {
   _scrollOffset = 0;
   _scrollWidth = 0;
   _lastScrollTick = millis();
+  _pinVisible = false;
+  _pinDigits = "0000";
 }
 
 void OledPin::showStatus(const String& wifi,
@@ -185,6 +202,23 @@ void OledPin::showPIN(int pin) {
   int16_t x = 64 - (_oled.getStrWidth(buf) / 2);
   _oled.drawStr(x, 58, buf);
   _oled.sendBuffer();
+}
+
+void OledPin::setPinCode(int pin) {
+  if (pin < 0) {
+    pin = 0;
+  }
+  if (pin > 9999) {
+    pin = pin % 10000;
+  }
+  char buf[5];
+  snprintf(buf, sizeof(buf), "%04d", pin);
+  _pinDigits = String(buf);
+  _pinVisible = true;
+  _statusDirty = true;
+  if (_statusActive) {
+    renderStatus();
+  }
 }
 
 void OledPin::showIOValues(const std::vector<IOBase*>& ios) {

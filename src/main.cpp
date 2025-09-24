@@ -22,6 +22,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
+#include <vector>
 
 #include "core/ConfigStore.h"
 #include "core/Logger.h"
@@ -74,6 +75,8 @@ static bool g_udpEnabled = false;
 static bool g_udpRunning = false;
 static uint16_t g_udpPort = 0;
 static unsigned long g_lastStatusRefresh = 0;
+static bool g_oledInitialised = false;
+static std::vector<String> g_deferredOledMessages;
 
 static WiFiStatusInfo setupWiFi();
 static void maintainWiFi();
@@ -84,6 +87,7 @@ static String computeUdpStatus();
 static String describeStaStatus(wl_status_t status);
 static void loadWiFiSettings();
 static String computeApSSID(const String& configured);
+static String formatApStatusLine();
 static String byteToUpperHex(uint8_t value);
 static bool startAccessPoint();
 static String computeWifiHardware();
@@ -91,6 +95,8 @@ static String phyModeToString(WiFiPhyMode_t mode);
 static String formatMacCompact(const uint8_t* mac);
 static void handleLogLineForDisplay(const String& line);
 static bool waitForSoftApReady(unsigned long timeoutMs = 1500);
+static void enqueueOledMessage(const String& message);
+static void flushDeferredOledMessages();
 
 /**
  * Lecture de la configuration Wi-Fi depuis network.json.
@@ -121,6 +127,7 @@ static void loadWiFiSettings() {
   if (apPassword.length() > 0 && apPassword.length() < 8) {
     Logger::warn("NET", "loadWiFiSettings", "AP password too short, disabling security");
     apPassword = "";
+    enqueueOledMessage("AP password too short -> OPEN network");
   }
   g_apPassword = apPassword;
 
@@ -189,7 +196,8 @@ static WiFiStatusInfo setupWiFi() {
     if (apStarted) {
       Logger::info("NET", "setupWiFi",
                    String("Fallback AP ready, SSID ") + g_apSSID +
-                   " ch " + g_apSettings.channel);
+                   " ch " + g_apSettings.channel +
+                   (g_apPassword.length() >= 8 ? " WPA2" : " OPEN"));
       info.apMode = true;
     } else {
       Logger::warn("NET", "setupWiFi", "Failed to start fallback AP");
@@ -202,8 +210,9 @@ static WiFiStatusInfo setupWiFi() {
 
   if (apStarted) {
     Logger::info("NET", "setupWiFi",
-                 String("AP started, SSID ") + g_apSSID + " ch " + g_apSettings.channel);
-    info.line = String("WiFi: AP ") + g_apSSID;
+                 String("AP started, SSID ") + g_apSSID + " ch " + g_apSettings.channel +
+                 (g_apPassword.length() >= 8 ? " WPA2" : " OPEN"));
+    info.line = formatApStatusLine();
     info.hardware = computeWifiHardware();
     info.ready = false;
     info.apMode = true;
@@ -233,6 +242,16 @@ static String computeApSSID(const String& configured) {
   WiFi.softAPmacAddress(mac);
   String suffix = byteToUpperHex(mac[4]) + byteToUpperHex(mac[5]);
   return base + suffix;
+}
+
+static String formatApStatusLine() {
+  String line = String("WiFi: AP ") + g_apSSID;
+  if (g_apPassword.length() >= 8) {
+    line += String(" (WPA2)");
+  } else {
+    line += String(" (OPEN)");
+  }
+  return line;
 }
 
 static String byteToUpperHex(uint8_t value) {
@@ -266,6 +285,7 @@ static bool startAccessPoint() {
       Logger::warn("NET", "startAccessPoint",
                    String("softAPConfig failed during ") + attemptTag +
                    ", keeping previous IP");
+      enqueueOledMessage(String("AP config failed (") + attemptTag + ")");
       return false;
     }
     return true;
@@ -280,6 +300,7 @@ static bool startAccessPoint() {
                                g_apSettings.hidden,
                                g_apSettings.maxClients);
     if (!started) {
+      enqueueOledMessage(String("AP start failed (") + attemptTag + ")");
       return false;
     }
 
@@ -289,6 +310,7 @@ static bool startAccessPoint() {
       Logger::warn("NET", "startAccessPoint",
                    String("softAP did not acquire IP during ") + attemptTag);
       WiFi.softAPdisconnect(true);
+      enqueueOledMessage(String("AP no IP (") + attemptTag + ")");
       return false;
     }
     return true;
@@ -310,6 +332,7 @@ static bool startAccessPoint() {
     delay(100);
   } else {
     Logger::error("NET", "startAccessPoint", "softAP start failed");
+    enqueueOledMessage("softAP start failed");
   }
   return started;
 }
@@ -326,6 +349,30 @@ static bool waitForSoftApReady(unsigned long timeoutMs) {
     yield();
   }
   return false;
+}
+
+static void enqueueOledMessage(const String& message) {
+  String trimmed = message;
+  trimmed.trim();
+  if (trimmed.length() == 0) {
+    return;
+  }
+
+  if (g_oledInitialised) {
+    OledPin::pushErrorMessage(trimmed);
+  } else {
+    g_deferredOledMessages.push_back(trimmed);
+  }
+}
+
+static void flushDeferredOledMessages() {
+  if (!g_oledInitialised) {
+    return;
+  }
+  for (const auto& msg : g_deferredOledMessages) {
+    OledPin::pushErrorMessage(msg);
+  }
+  g_deferredOledMessages.clear();
 }
 
 static String computeWifiHardware() {
@@ -433,7 +480,8 @@ static void maintainWiFi() {
     WiFi.mode(g_staSettings.enabled ? WIFI_AP_STA : WIFI_AP);
     if (startAccessPoint()) {
       Logger::info("NET", "maintainWiFi",
-                   String("AP restarted, SSID ") + g_apSSID + " ch " + g_apSettings.channel);
+                   String("AP restarted, SSID ") + g_apSSID + " ch " + g_apSettings.channel +
+                   (g_apPassword.length() >= 8 ? " WPA2" : " OPEN"));
       apActive = true;
     } else {
       Logger::error("NET", "maintainWiFi", "Failed to restart AP");
@@ -444,11 +492,11 @@ static void maintainWiFi() {
   if (staConnected) {
     line = String("WiFi: STA ") + WiFi.localIP().toString();
   } else if (apClients) {
-    line = String("WiFi: AP ") + g_apSSID;
+    line = formatApStatusLine();
   } else if (g_staSettings.enabled) {
     line = describeStaStatus(WiFi.status());
   } else if (apActive) {
-    line = String("WiFi: AP ") + g_apSSID;
+    line = formatApStatusLine();
   } else {
     line = String("WiFi: OFF");
   }
@@ -490,7 +538,9 @@ static void updateDisplayState() {
 }
 
 static void handleLogLineForDisplay(const String& line) {
-  if (line.indexOf("[E]") < 0) {
+  bool isError = line.indexOf("[E]") >= 0;
+  bool isWarning = line.indexOf("[W]") >= 0;
+  if (!isError && !isWarning) {
     return;
   }
 
@@ -523,6 +573,8 @@ void setup() {
 
   // Initialisation de l'afficheur OLED
   OledPin::begin();
+  g_oledInitialised = true;
+  flushDeferredOledMessages();
 
   // Initialise le système de journalisation
   Logger::begin();

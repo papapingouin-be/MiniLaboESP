@@ -503,7 +503,7 @@ bool WebServer::begin() {
     // Lire le corps JSON
     String body = readRequestBody(request);
     if (body.length()) {
-      DynamicJsonDocument doc(128);
+      JsonDocument doc(128);
       DeserializationError err = deserializeJson(doc, body);
       if (err) {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -552,7 +552,7 @@ bool WebServer::begin() {
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"Missing body\"}");
       return;
     }
-    DynamicJsonDocument doc(256);
+    JsonDocument doc(256);
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid JSON\"}");
       return;
@@ -594,7 +594,7 @@ bool WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    DynamicJsonDocument doc(1024);
+    JsonDocument doc(1024);
     JsonArray arr = doc.to<JsonArray>();
     auto list = IORegistry::list();
     for (auto io : list) {
@@ -614,7 +614,7 @@ bool WebServer::begin() {
       return;
     }
     DMM::loop(); // mise ÃƒÂ  jour rapide
-    DynamicJsonDocument doc(256);
+    JsonDocument doc(256);
     JsonObject obj = doc.to<JsonObject>();
     DMM::values(obj);
     String out;
@@ -630,7 +630,7 @@ bool WebServer::begin() {
     }
     // Mise ÃƒÂ  jour de l'oscilloscope
     Scope::loop();
-    DynamicJsonDocument doc(1024);
+    JsonDocument doc(1024);
     JsonObject obj = doc.to<JsonObject>();
     Scope::toJson(obj);
     String out;
@@ -649,7 +649,7 @@ bool WebServer::begin() {
       request->send(400, "application/json", "{\"error\":\"Missing body\"}");
       return;
     }
-    DynamicJsonDocument doc(256);
+    JsonDocument doc(256);
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
@@ -674,7 +674,7 @@ bool WebServer::begin() {
       lines = request->getParam("n")->value().toInt();
     }
     String result = Logger::tail(lines);
-    DynamicJsonDocument doc(256);
+    JsonDocument doc(256);
     doc["lines"] = result;
     String out;
     serializeJson(doc, out);
@@ -717,7 +717,7 @@ bool WebServer::begin() {
       request->send(400, "application/json", "{\"error\":\"Missing body\"}");
       return;
     }
-    DynamicJsonDocument doc(1024);
+    JsonDocument doc(1024);
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
@@ -795,7 +795,7 @@ String WebServer::readRequestBody(AsyncWebServerRequest *request) {
   }
 
   if (request->hasParam(F("plain"), true)) {
-    AsyncWebParameter *param = request->getParam(F("plain"), true);
+    const AsyncWebParameter *param = request->getParam(F("plain"), true);
     if (param) {
       result = param->value();
       if (result.length() > 0) {
@@ -805,7 +805,7 @@ String WebServer::readRequestBody(AsyncWebServerRequest *request) {
   }
 
   if (request->hasParam(F("plain"))) {
-    AsyncWebParameter *param = request->getParam(F("plain"));
+    const AsyncWebParameter *param = request->getParam(F("plain"));
     if (param) {
       result = param->value();
     }

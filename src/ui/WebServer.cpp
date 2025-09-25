@@ -776,13 +776,41 @@ bool WebServer::checkAuth(AsyncWebServerRequest *request) {
 }
 
 String WebServer::readRequestBody(AsyncWebServerRequest *request) {
-  if (!request || !request->_tempObject) {
+  if (!request) {
     return String();
   }
-  String *body = static_cast<String *>(request->_tempObject);
-  String result = *body;
-  delete body;
-  request->_tempObject = nullptr;
+
+  String result;
+  if (request->_tempObject) {
+    String *body = static_cast<String *>(request->_tempObject);
+    if (body) {
+      result = *body;
+      delete body;
+    }
+    request->_tempObject = nullptr;
+  }
+
+  if (result.length() > 0) {
+    return result;
+  }
+
+  if (request->hasParam(F("plain"), true)) {
+    AsyncWebParameter *param = request->getParam(F("plain"), true);
+    if (param) {
+      result = param->value();
+      if (result.length() > 0) {
+        return result;
+      }
+    }
+  }
+
+  if (request->hasParam(F("plain"))) {
+    AsyncWebParameter *param = request->getParam(F("plain"));
+    if (param) {
+      result = param->value();
+    }
+  }
+
   return result;
 }
 

@@ -31,6 +31,10 @@ namespace OledPin {
   void setExpectedPin(const String& pin);
   /** Définit le code PIN à afficher dans le bandeau de statut (session). */
   void setPinCode(int pin);
+  /** Mémorise le code PIN soumis par le client Web. */
+  void setSubmittedPin(const String& pin);
+  /** Affiche le résultat du test de connexion. */
+  void setTestStatus(const String& status);
   /** Affiche un aperçu des IO après authentification. */
   void showIOValues(const std::vector<IOBase*>& ios);
 }

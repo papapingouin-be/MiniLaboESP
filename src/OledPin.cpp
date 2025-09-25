@@ -28,8 +28,11 @@ namespace {
   bool _pinVisible = false;
   bool _hasSessionPin = false;
   bool _hasExpectedPin = false;
+  bool _hasSubmittedPin = false;
   String _sessionPinDigits;
   String _expectedPinDigits;
+  String _submittedPinDigits;
+  String _testStatusLine;
 
   constexpr const char kUnknownPin[] = "----";
 
@@ -107,19 +110,40 @@ namespace {
       return;
     }
     _oled.clearBuffer();
+
+    if (_pinVisible) {
+      auto drawLabelValue = [&](int y, const char* label, const String& value) {
+        _oled.setFont(u8g2_font_6x12_tf);
+        _oled.drawUTF8(0, y, label);
+        if (value.length() > 0) {
+          int16_t valueWidth = _oled.getUTF8Width(value.c_str());
+          int16_t valueX = 128 - valueWidth;
+          if (valueX < 72) {
+            valueX = 72;
+          }
+          _oled.drawUTF8(valueX, y, value.c_str());
+        }
+      };
+
+      drawLabelValue(12, "Code pin généré", _sessionPinDigits);
+      drawLabelValue(24, "code pin envoyé", _submittedPinDigits);
+
+      _oled.setFont(u8g2_font_6x12_tf);
+      _oled.drawUTF8(0, 36, "lors du login par");
+      _oled.drawUTF8(0, 48, "la page web");
+
+      drawLabelValue(60, "etat du test", _testStatusLine);
+
+      _oled.sendBuffer();
+      _statusDirty = false;
+      return;
+    }
+
     _oled.setFont(u8g2_font_6x12_tf);
     _oled.drawStr(0, 12, _wifiLine.c_str());
     _oled.drawStr(0, 26, _wifiHardwareLine.c_str());
     _oled.drawStr(0, 40, _webLine.c_str());
     _oled.drawStr(0, 54, _udpLine.c_str());
-
-    if (_pinVisible) {
-      _oled.setFont(u8g2_font_6x12_tf);
-      _oled.drawStr(78, 12, "PIN gen");
-      _oled.drawStr(84, 24, _sessionPinDigits.c_str());
-      _oled.drawStr(78, 40, "PIN web");
-      _oled.drawStr(84, 52, _expectedPinDigits.c_str());
-    }
 
     const int baseline = 62;
     if (_scrollText.length() > 0) {
@@ -158,8 +182,11 @@ void OledPin::begin() {
   _pinVisible = false;
   _hasSessionPin = false;
   _hasExpectedPin = false;
+  _hasSubmittedPin = false;
   _sessionPinDigits = String(kUnknownPin);
   _expectedPinDigits = String(kUnknownPin);
+  _submittedPinDigits = String(kUnknownPin);
+  _testStatusLine = F("---");
 }
 
 void OledPin::showStatus(const String& wifi,
@@ -263,7 +290,12 @@ void OledPin::setSessionPin(int pin) {
   bool changed = !_hasSessionPin || _sessionPinDigits != digits;
   _sessionPinDigits = digits;
   _hasSessionPin = true;
-  _pinVisible = _hasSessionPin || _hasExpectedPin;
+  if (changed) {
+    _submittedPinDigits = String(kUnknownPin);
+    _hasSubmittedPin = false;
+    _testStatusLine = F("---");
+  }
+  _pinVisible = _hasSessionPin || _hasExpectedPin || _hasSubmittedPin;
   if (changed || _pinVisible != prevVisible) {
     _statusDirty = true;
   }
@@ -279,7 +311,7 @@ void OledPin::setExpectedPin(const String& pin) {
   bool changed = !_hasExpectedPin || _expectedPinDigits != digits;
   _expectedPinDigits = digits;
   _hasExpectedPin = valid;
-  _pinVisible = _hasSessionPin || _hasExpectedPin;
+  _pinVisible = _hasSessionPin || _hasExpectedPin || _hasSubmittedPin;
   if (changed || _pinVisible != prevVisible) {
     _statusDirty = true;
   }
@@ -290,6 +322,61 @@ void OledPin::setExpectedPin(const String& pin) {
 
 void OledPin::setPinCode(int pin) {
   setSessionPin(pin);
+}
+
+void OledPin::setSubmittedPin(const String& pin) {
+  String digits;
+  digits.reserve(4);
+  for (size_t i = 0; i < pin.length() && digits.length() < 4; ++i) {
+    char c = pin.charAt(i);
+    if (c >= '0' && c <= '9') {
+      digits += c;
+    }
+  }
+
+  bool hasDigits = digits.length() > 0;
+  String display;
+  if (!hasDigits) {
+    display = String(kUnknownPin);
+  } else {
+    display = digits;
+    while (display.length() < 4) {
+      display += '_';
+    }
+  }
+
+  bool prevVisible = _pinVisible;
+  bool changed = !_hasSubmittedPin || _submittedPinDigits != display;
+  _submittedPinDigits = display;
+  _hasSubmittedPin = hasDigits;
+  _pinVisible = _hasSessionPin || _hasExpectedPin || _hasSubmittedPin;
+  if (changed || _pinVisible != prevVisible) {
+    _statusDirty = true;
+  }
+  if (_statusActive && _statusDirty) {
+    renderStatus();
+  }
+}
+
+void OledPin::setTestStatus(const String& status) {
+  String sanitized = status;
+  sanitized.replace('\r', ' ');
+  sanitized.replace('\n', ' ');
+  sanitized.trim();
+  if (sanitized.length() == 0) {
+    sanitized = F("---");
+  }
+  if (sanitized.length() > 18) {
+    sanitized = sanitized.substring(0, 18);
+  }
+
+  if (_testStatusLine != sanitized) {
+    _testStatusLine = sanitized;
+    _statusDirty = true;
+  }
+  if (_statusActive && _statusDirty) {
+    renderStatus();
+  }
 }
 
 void OledPin::showIOValues(const std::vector<IOBase*>& ios) {

@@ -108,6 +108,29 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
   </div>
   <script>
     const pinInput = document.getElementById('pinInput');
+    let lastSentPin = '';
+
+    function sendLoginEvent(type, details) {
+      try {
+        const payload = Object.assign({type:type}, details || {});
+        fetch('/api/login/event', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          credentials:'same-origin',
+          body: JSON.stringify(payload)
+        }).catch(() => {});
+      } catch (e) {
+        console.warn('login event error', e);
+      }
+    }
+
+    function notifyPinChange() {
+      const pin = sanitizePin(pinInput.value);
+      if (pin !== lastSentPin) {
+        lastSentPin = pin;
+        sendLoginEvent('pin_update', {pin: pin});
+      }
+    }
 
     function sanitizePin(value) {
       return (value || '').replace(/[^0-9]/g, '').slice(0, 4);
@@ -116,16 +139,19 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     function appendDigit(digit) {
       pinInput.value = sanitizePin(pinInput.value + digit);
       pinInput.focus();
+      notifyPinChange();
     }
 
     function clearPin() {
       pinInput.value = '';
       pinInput.focus();
+      notifyPinChange();
     }
 
     function backspacePin() {
       pinInput.value = pinInput.value.slice(0, -1);
       pinInput.focus();
+      notifyPinChange();
     }
 
     pinInput.addEventListener('input', (event) => {
@@ -133,6 +159,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       if (sanitized !== event.target.value) {
         event.target.value = sanitized;
       }
+      notifyPinChange();
     });
 
     pinInput.addEventListener('keyup', (event) => {
@@ -142,6 +169,8 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     });
 
     pinInput.focus();
+    sendLoginEvent('page_load');
+    notifyPinChange();
 
     function login() {
       const pin = sanitizePin(pinInput.value);
@@ -149,6 +178,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       fetch('/login', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
         body: JSON.stringify({pin:pin})
       }).then(r => r.json()).then(data => {
         if (data.success) {
@@ -158,11 +188,14 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           loadFuncTargets();
           loadDmmChannels();
           startLogs();
+          sendLoginEvent('login_result', {success:true, message:'Connexion OK', pin:pin});
         } else {
           document.getElementById('loginStatus').innerText='PIN incorrect';
+          sendLoginEvent('login_result', {success:false, message:'PIN incorrect', pin:pin});
         }
       }).catch(err => {
         document.getElementById('loginStatus').innerText='Erreur: '+err;
+        sendLoginEvent('login_result', {success:false, message:'Erreur: '+err, pin:pin});
       });
     }
 
@@ -177,7 +210,9 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     }
 
     function loadIO() {
-      fetch('/api/io').then(checkAuthResponse).then(r => r.json()).then(data => {
+      fetch('/api/io', {credentials:'same-origin'})
+        .then(checkAuthResponse)
+        .then(r => r.json()).then(data => {
         const list = document.getElementById('ioList');
         list.innerHTML='';
         (data || []).forEach(io => {
@@ -189,7 +224,9 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     }
 
     function loadDmmChannels() {
-      fetch('/api/dmm').then(checkAuthResponse).then(r => r.json()).then(data => {
+      fetch('/api/dmm', {credentials:'same-origin'})
+        .then(checkAuthResponse)
+        .then(r => r.json()).then(data => {
         const select = document.getElementById('dmmSelect');
         select.innerHTML='';
         if (data.channels) {
@@ -207,7 +244,9 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     }
 
     function loadFuncTargets() {
-      fetch('/api/config/funcgen').then(checkAuthResponse).then(r => r.json()).then(cfg => {
+      fetch('/api/config/funcgen', {credentials:'same-origin'})
+        .then(checkAuthResponse)
+        .then(r => r.json()).then(cfg => {
         const select = document.getElementById('funcTarget');
         select.innerHTML='';
         if (cfg.targets) {
@@ -232,6 +271,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       fetch('/api/funcgen', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
         body: JSON.stringify(payload)
       }).then(checkAuthResponse).then(r => r.json()).then(resp => {
         if (!resp.success) {
@@ -276,6 +316,29 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
   </script>
 </body>
 </html>)rawliteral";
+
+String extractDigits(const String& value) {
+  String digits;
+  digits.reserve(4);
+  for (size_t i = 0; i < value.length() && digits.length() < 4; ++i) {
+    char c = value.charAt(i);
+    if (c >= '0' && c <= '9') {
+      digits += c;
+    }
+  }
+  return digits;
+}
+
+String normalizePin(const String& value) {
+  String digits = extractDigits(value);
+  if (digits.length() == 0) {
+    digits = F("0000");
+  }
+  while (digits.length() < 4) {
+    digits = String('0') + digits;
+  }
+  return digits;
+}
 
 void ensureIndexHtmlPresent() {
   if (LittleFS.exists("/index.html")) {
@@ -360,29 +423,6 @@ bool WebServer::begin() {
         return;
       }
 
-      auto extractDigits = [](const String& value) {
-        String digits;
-        digits.reserve(4);
-        for (size_t i = 0; i < value.length() && digits.length() < 4; ++i) {
-          char c = value.charAt(i);
-          if (c >= '0' && c <= '9') {
-            digits += c;
-          }
-        }
-        return digits;
-      };
-
-      auto normalizePin = [&extractDigits](const String& value) {
-        String digits = extractDigits(value);
-        if (digits.length() == 0) {
-          digits = F("0000");
-        }
-        while (digits.length() < 4) {
-          digits = String('0') + digits;
-        }
-        return digits;
-      };
-
       String submittedSanitized = extractDigits(doc["pin"].as<String>());
       if (submittedSanitized.length() != 4) {
         request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
@@ -420,6 +460,52 @@ bool WebServer::begin() {
       }
     }
     request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
+  });
+
+  _server.on("/api/login/event", HTTP_POST, [](AsyncWebServerRequest *request) {
+    String body = readRequestBody(request);
+    if (!body.length()) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"Missing body\"}");
+      return;
+    }
+    DynamicJsonDocument doc(256);
+    if (deserializeJson(doc, body)) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid JSON\"}");
+      return;
+    }
+    String type = doc["type"].as<String>();
+    type.trim();
+    type.toLowerCase();
+    if (!type.length()) {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"Missing type\"}");
+      return;
+    }
+
+    if (type == F("page_load")) {
+      OledPin::pushErrorMessage(F("Client login connecté"));
+      OledPin::setPinCode(0);
+    } else if (type == F("pin_update")) {
+      String pinDigits = extractDigits(doc["pin"].as<String>());
+      int pinValue = pinDigits.length() ? pinDigits.toInt() : 0;
+      OledPin::setPinCode(pinValue);
+    } else if (type == F("login_result")) {
+      bool success = doc["success"].as<bool>();
+      String message = doc["message"].as<String>();
+      if (!message.length()) {
+        message = success ? F("Connexion OK") : F("PIN incorrect");
+      }
+      if (success) {
+        String pinDigits = extractDigits(doc["pin"].as<String>());
+        int pinValue = pinDigits.length() ? pinDigits.toInt() : 0;
+        OledPin::setPinCode(pinValue);
+      }
+      OledPin::pushErrorMessage(message);
+    } else {
+      request->send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown type\"}");
+      return;
+    }
+
+    request->send(200, "application/json", "{\"ok\":true}");
   });
 
   // Route GET /api/io

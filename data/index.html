@@ -182,6 +182,29 @@
   </div>
   <script>
     const pinInput = document.getElementById('pinInput');
+    let lastSentPin = '';
+
+    function sendLoginEvent(type, details) {
+      try {
+        const payload = Object.assign({type:type}, details || {});
+        fetch('/api/login/event', {
+          method:'POST',
+          headers:{'Content-Type':'application/json'},
+          credentials:'same-origin',
+          body: JSON.stringify(payload)
+        }).catch(() => {});
+      } catch (e) {
+        console.warn('login event error', e);
+      }
+    }
+
+    function notifyPinChange() {
+      const pin = sanitizePin(pinInput.value);
+      if (pin !== lastSentPin) {
+        lastSentPin = pin;
+        sendLoginEvent('pin_update', {pin:pin});
+      }
+    }
 
     function sanitizePin(value) {
       return (value || '').replace(/[^0-9]/g, '').slice(0, 4);
@@ -190,16 +213,19 @@
     function appendDigit(digit) {
       pinInput.value = sanitizePin(pinInput.value + digit);
       pinInput.focus();
+      notifyPinChange();
     }
 
     function clearPin() {
       pinInput.value = '';
       pinInput.focus();
+      notifyPinChange();
     }
 
     function backspacePin() {
       pinInput.value = pinInput.value.slice(0, -1);
       pinInput.focus();
+      notifyPinChange();
     }
 
     pinInput.addEventListener('input', (event) => {
@@ -207,6 +233,7 @@
       if (sanitized !== event.target.value) {
         event.target.value = sanitized;
       }
+      notifyPinChange();
     });
 
     pinInput.addEventListener('keyup', (event) => {
@@ -216,6 +243,8 @@
     });
 
     pinInput.focus();
+    sendLoginEvent('page_load');
+    notifyPinChange();
 
     // Fonction de connexion : envoie le PIN au serveur et gère la réponse
     function login() {
@@ -224,6 +253,7 @@
       fetch('/login', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
         body: JSON.stringify({pin:pin})
       }).then(r => r.json()).then(data => {
         if (data.success) {
@@ -232,16 +262,19 @@
           loadIO();
           loadDMM();
           setInterval(loadDMM, 1000);
+          sendLoginEvent('login_result', {success:true, message:'Connexion OK', pin:pin});
         } else {
           document.getElementById('loginStatus').innerText = data.error || 'Échec';
+          sendLoginEvent('login_result', {success:false, message:data.error || 'Échec', pin:pin});
         }
-      }).catch(() => {
+      }).catch((err) => {
         document.getElementById('loginStatus').innerText = 'Erreur de connexion';
+        sendLoginEvent('login_result', {success:false, message:'Erreur de connexion', pin:pin});
       });
     }
     // Charge la liste des IO et met à jour les sélecteurs et la liste
     function loadIO() {
-      fetch('/api/io').then(r => r.json()).then(data => {
+      fetch('/api/io', {credentials:'same-origin'}).then(r => r.json()).then(data => {
         const dmmSel = document.getElementById('dmmSelect');
         const funcSel = document.getElementById('funcTarget');
         dmmSel.innerHTML='';
@@ -265,7 +298,7 @@
     }
     // Charge les valeurs du multimètre et met à jour l'affichage
     function loadDMM() {
-      fetch('/api/dmm').then(r => r.json()).then(data => {
+      fetch('/api/dmm', {credentials:'same-origin'}).then(r => r.json()).then(data => {
         const div=document.getElementById('dmmValues');
         div.innerHTML='';
         for (const ch in data) {
@@ -285,6 +318,7 @@
       fetch('/api/funcgen', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
         body: JSON.stringify({target:target,freq:freq,amplitude:amp,offset:off,wave:wave})
       }).then(r => r.json()).then(data => {
         if(!data.success) alert('Erreur lors de la mise à jour du générateur');

@@ -511,7 +511,9 @@ bool WebServer::begin() {
       }
 
       String submittedSanitized = extractDigits(doc["pin"].as<String>());
+      OledPin::setSubmittedPin(submittedSanitized);
       if (submittedSanitized.length() != 4) {
+        OledPin::setTestStatus(F("PIN incomplet"));
         OledPin::pushErrorMessage(F("PIN incorrect"));
         request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
         return;
@@ -530,6 +532,7 @@ bool WebServer::begin() {
 
       if (expectedSanitized.length() == 4 &&
           submittedSanitized == expectedSanitized) {
+        OledPin::setTestStatus(F("OK"));
         // Auth ok : définir cookie
         _hasAuthenticatedClient = true;
         AsyncWebServerResponse *response = request->beginResponse(200, "application/json", "{\"success\":true}");
@@ -538,6 +541,7 @@ bool WebServer::begin() {
         return;
       }
     }
+    OledPin::setTestStatus(F("PIN incorrect"));
     OledPin::pushErrorMessage(F("PIN incorrect"));
     request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
   });
@@ -563,17 +567,18 @@ bool WebServer::begin() {
 
     if (type == F("page_load")) {
       OledPin::pushErrorMessage(F("Client login connecté"));
+      OledPin::setSubmittedPin(String());
+      OledPin::setTestStatus(F("---"));
     } else if (type == F("pin_update")) {
-      // Ne pas modifier l'affichage du code PIN avec les entrées du client :
-      // cela masquerait le véritable code généré par l'appareil et
-      // empêcherait l'utilisateur de s'authentifier correctement.
-      // On se contente donc d'enregistrer l'évènement.
+      OledPin::setSubmittedPin(doc["pin"].as<String>());
     } else if (type == F("login_result")) {
       bool success = doc["success"].as<bool>();
       String message = doc["message"].as<String>();
       if (!message.length()) {
         message = success ? F("Connexion OK") : F("PIN incorrect");
       }
+      OledPin::setSubmittedPin(doc["pin"].as<String>());
+      OledPin::setTestStatus(success ? F("OK") : message);
       OledPin::pushErrorMessage(message);
     } else {
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown type\"}");

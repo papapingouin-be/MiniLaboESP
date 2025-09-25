@@ -184,15 +184,34 @@
     const pinInput = document.getElementById('pinInput');
     let lastSentPin = '';
 
-    function sendLoginEvent(type, details) {
+    async function sendLoginEvent(type, details) {
+      const payloadObj = Object.assign({type:type}, details || {});
+      const payloadJson = JSON.stringify(payloadObj);
+      const debugDetails = JSON.stringify(details || {});
+
       try {
-        const payload = Object.assign({type:type}, details || {});
-        fetch('/api/login/event', {
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          const sent = navigator.sendBeacon('/api/login/event', new Blob([payloadJson], {type:'application/json'}));
+          if (sent) {
+            console.debug('login event beacon sent', type, details);
+            return;
+          }
+          console.debug('login event beacon failed', type, details);
+        }
+      } catch (e) {
+        console.warn('login event beacon error', e);
+      }
+
+      try {
+        const response = await fetch('/api/login/event', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           credentials:'same-origin',
-          body: JSON.stringify(payload)
-        }).catch(() => {});
+          keepalive:true,
+          cache:'no-store',
+          body: payloadJson
+        });
+        console.debug('login event sent', type, debugDetails, response.status);
       } catch (e) {
         console.warn('login event error', e);
       }

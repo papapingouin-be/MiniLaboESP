@@ -151,16 +151,35 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       debugLog.scrollTop = debugLog.scrollHeight;
     }
 
-    function sendLoginEvent(type, details) {
+    async function sendLoginEvent(type, details) {
+      const payloadObj = Object.assign({type:type}, details || {});
+      const payloadJson = JSON.stringify(payloadObj);
+      const debugDetails = JSON.stringify(details || {});
+
       try {
-        const payload = Object.assign({type:type}, details || {});
-        fetch('/api/login/event', {
+        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
+          const sent = navigator.sendBeacon('/api/login/event', new Blob([payloadJson], {type:'application/json'}));
+          if (sent) {
+            appendDebug(`event => ${type} ${debugDetails} (beacon)`);
+            return;
+          }
+          appendDebug(`event beacon failed => ${type} ${debugDetails}`);
+        }
+      } catch (e) {
+        console.warn('login event beacon error', e);
+        appendDebug(`event beacon error: ${e}`);
+      }
+
+      try {
+        const response = await fetch('/api/login/event', {
           method:'POST',
           headers:{'Content-Type':'application/json'},
           credentials:'same-origin',
-          body: JSON.stringify(payload)
-        }).catch(() => {});
-        appendDebug(`event => ${type} ${JSON.stringify(details || {})}`);
+          keepalive:true,
+          cache:'no-store',
+          body: payloadJson
+        });
+        appendDebug(`event => ${type} ${debugDetails} status=${response.status}`);
       } catch (e) {
         console.warn('login event error', e);
         appendDebug(`event error: ${e}`);

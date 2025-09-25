@@ -38,6 +38,11 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     button:hover { background:#1d4ed8; transform:translateY(-1px); }
     input, select { background:#f9fafc; border:1px solid #cbd5e1; color:#1f2933; border-radius:0.5rem; padding:0.4rem 0.5rem; box-shadow:inset 0 1px 2px rgba(15,23,42,0.05); }
     #logsPanel { background:#f9fafc; border:1px solid #d0d7de; max-height:220px; overflow:auto; padding:0.75rem; margin-top:1rem; border-radius:0.6rem; box-shadow:inset 0 1px 3px rgba(15,23,42,0.1); }
+    #debugToggle { display:inline-block; margin-top:0.75rem; color:#2563eb; text-decoration:none; font-size:0.95rem; }
+    #debugToggle:hover { text-decoration:underline; }
+    #debugPanel { display:none; margin-top:0.75rem; background:#f9fafc; border:1px solid #d0d7de; border-radius:0.6rem; padding:0.75rem; box-shadow:inset 0 1px 3px rgba(15,23,42,0.1); }
+    #debugPanel h3 { margin-top:0; font-size:1rem; color:#1f2933; }
+    #debugLog { max-height:160px; overflow:auto; background:#ffffff; border:1px solid #cbd5e1; border-radius:0.5rem; padding:0.5rem; font-size:0.85rem; line-height:1.3; }
   </style>
 </head>
 <body>
@@ -66,6 +71,11 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     </div>
     <button type="button" onclick="login()">Se connecter</button>
     <p id="loginStatus" style="color:red;"></p>
+    <a href="#" id="debugToggle" onclick="toggleDebug(event)">Afficher le debug</a>
+    <div id="debugPanel">
+      <h3>Debug</h3>
+      <pre id="debugLog"></pre>
+    </div>
   </div>
   <div id="dashboard">
     <div class="cards">
@@ -108,7 +118,38 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
   </div>
   <script>
     const pinInput = document.getElementById('pinInput');
+    const debugPanel = document.getElementById('debugPanel');
+    const debugLog = document.getElementById('debugLog');
+    const debugToggleLink = document.getElementById('debugToggle');
     let lastSentPin = '';
+
+    function toggleDebug(event) {
+      if (event) {
+        event.preventDefault();
+      }
+      if (!debugPanel || !debugToggleLink) {
+        return false;
+      }
+      const isHidden = debugPanel.style.display === 'none' || debugPanel.style.display === '';
+      debugPanel.style.display = isHidden ? 'block' : 'none';
+      debugToggleLink.textContent = isHidden ? 'Masquer le debug' : 'Afficher le debug';
+      if (!isHidden && debugLog) {
+        debugLog.scrollTop = debugLog.scrollHeight;
+      }
+      return false;
+    }
+
+    function appendDebug(message) {
+      if (!debugLog) {
+        return;
+      }
+      const timestamp = new Date().toISOString();
+      debugLog.textContent += `[${timestamp}] ${message}\n`;
+      if (debugLog.textContent.length > 8000) {
+        debugLog.textContent = debugLog.textContent.slice(debugLog.textContent.length - 8000);
+      }
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
 
     function sendLoginEvent(type, details) {
       try {
@@ -119,8 +160,10 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           credentials:'same-origin',
           body: JSON.stringify(payload)
         }).catch(() => {});
+        appendDebug(`event => ${type} ${JSON.stringify(details || {})}`);
       } catch (e) {
         console.warn('login event error', e);
+        appendDebug(`event error: ${e}`);
       }
     }
 
@@ -129,6 +172,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       if (pin !== lastSentPin) {
         lastSentPin = pin;
         sendLoginEvent('pin_update', {pin: pin});
+        appendDebug(`pin_update local => ${pin}`);
       }
     }
 
@@ -181,6 +225,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         credentials:'same-origin',
         body: JSON.stringify({pin:pin})
       }).then(r => r.json()).then(data => {
+        appendDebug(`login response => ${JSON.stringify(data)}`);
         if (data.success) {
           document.getElementById('loginForm').style.display='none';
           document.getElementById('dashboard').style.display='block';
@@ -195,6 +240,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
         }
       }).catch(err => {
         document.getElementById('loginStatus').innerText='Erreur: '+err;
+        appendDebug(`login error => ${err}`);
         sendLoginEvent('login_result', {success:false, message:'Erreur: '+err, pin:pin});
       });
     }
@@ -425,6 +471,7 @@ bool WebServer::begin() {
 
       String submittedSanitized = extractDigits(doc["pin"].as<String>());
       if (submittedSanitized.length() != 4) {
+        OledPin::pushErrorMessage(F("PIN incorrect"));
         request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
         return;
       }
@@ -459,6 +506,7 @@ bool WebServer::begin() {
         return;
       }
     }
+    OledPin::pushErrorMessage(F("PIN incorrect"));
     request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
   });
 

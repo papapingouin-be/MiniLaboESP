@@ -395,6 +395,11 @@ void WebServer::setExpectedPin(int pin) {
 void WebServer::setExpectedPin(const String& pin) {
   _expectedPin = normalizePin(pin);
   _hasAuthenticatedClient = false;
+  OledPin::setExpectedPin(_expectedPin);
+}
+
+String WebServer::expectedPin() {
+  return _expectedPin;
 }
 
 namespace {

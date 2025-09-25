@@ -25,6 +25,8 @@ public:
   static void setExpectedPin(int pin);
   /** Définit le code PIN attendu à partir d'une chaîne (utilisé par la config). */
   static void setExpectedPin(const String& pin);
+  /** Retourne le code PIN attendu actuellement normalisé sur 4 chiffres. */
+  static String expectedPin();
 private:
   static AsyncWebServer _server;
   static AsyncWebSocket _wsLogs;

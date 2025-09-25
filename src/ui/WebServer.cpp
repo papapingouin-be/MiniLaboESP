@@ -531,21 +531,16 @@ bool WebServer::begin() {
 
     if (type == F("page_load")) {
       OledPin::pushErrorMessage(F("Client login connecté"));
-      OledPin::setPinCode(0);
     } else if (type == F("pin_update")) {
-      String pinDigits = extractDigits(doc["pin"].as<String>());
-      int pinValue = pinDigits.length() ? pinDigits.toInt() : 0;
-      OledPin::setPinCode(pinValue);
+      // Ne pas modifier l'affichage du code PIN avec les entrées du client :
+      // cela masquerait le véritable code généré par l'appareil et
+      // empêcherait l'utilisateur de s'authentifier correctement.
+      // On se contente donc d'enregistrer l'évènement.
     } else if (type == F("login_result")) {
       bool success = doc["success"].as<bool>();
       String message = doc["message"].as<String>();
       if (!message.length()) {
         message = success ? F("Connexion OK") : F("PIN incorrect");
-      }
-      if (success) {
-        String pinDigits = extractDigits(doc["pin"].as<String>());
-        int pinValue = pinDigits.length() ? pinDigits.toInt() : 0;
-        OledPin::setPinCode(pinValue);
       }
       OledPin::pushErrorMessage(message);
     } else {

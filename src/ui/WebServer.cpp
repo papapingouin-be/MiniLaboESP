@@ -503,7 +503,7 @@ bool WebServer::begin() {
     // Lire le corps JSON
     String body = readRequestBody(request);
     if (body.length()) {
-      JsonDocument doc(128);
+      StaticJsonDocument<128> doc;
       DeserializationError err = deserializeJson(doc, body);
       if (err) {
         request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid JSON\"}");
@@ -552,7 +552,7 @@ bool WebServer::begin() {
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"Missing body\"}");
       return;
     }
-    JsonDocument doc(256);
+    StaticJsonDocument<256> doc;
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid JSON\"}");
       return;
@@ -594,7 +594,7 @@ bool WebServer::begin() {
       request->send(401, "application/json", "{\"error\":\"Unauthorized\"}");
       return;
     }
-    JsonDocument doc(1024);
+    StaticJsonDocument<1024> doc;
     JsonArray arr = doc.to<JsonArray>();
     auto list = IORegistry::list();
     for (auto io : list) {
@@ -614,7 +614,7 @@ bool WebServer::begin() {
       return;
     }
     DMM::loop(); // mise ÃƒÂ  jour rapide
-    JsonDocument doc(256);
+    StaticJsonDocument<256> doc;
     JsonObject obj = doc.to<JsonObject>();
     DMM::values(obj);
     String out;
@@ -630,7 +630,7 @@ bool WebServer::begin() {
     }
     // Mise ÃƒÂ  jour de l'oscilloscope
     Scope::loop();
-    JsonDocument doc(1024);
+    StaticJsonDocument<1024> doc;
     JsonObject obj = doc.to<JsonObject>();
     Scope::toJson(obj);
     String out;
@@ -649,7 +649,7 @@ bool WebServer::begin() {
       request->send(400, "application/json", "{\"error\":\"Missing body\"}");
       return;
     }
-    JsonDocument doc(256);
+    StaticJsonDocument<256> doc;
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;
@@ -674,7 +674,7 @@ bool WebServer::begin() {
       lines = request->getParam("n")->value().toInt();
     }
     String result = Logger::tail(lines);
-    JsonDocument doc(256);
+    StaticJsonDocument<256> doc;
     doc["lines"] = result;
     String out;
     serializeJson(doc, out);
@@ -717,7 +717,7 @@ bool WebServer::begin() {
       request->send(400, "application/json", "{\"error\":\"Missing body\"}");
       return;
     }
-    JsonDocument doc(1024);
+    StaticJsonDocument<1024> doc;
     if (deserializeJson(doc, body)) {
       request->send(400, "application/json", "{\"error\":\"Invalid JSON\"}");
       return;

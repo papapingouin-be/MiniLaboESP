@@ -386,6 +386,37 @@ String normalizePin(const String& value) {
   return digits;
 }
 
+}  // namespace
+
+void WebServer::setExpectedPin(int pin) {
+  setExpectedPin(String(pin));
+}
+
+void WebServer::setExpectedPin(const String& pin) {
+  _expectedPin = normalizePin(pin);
+  _hasAuthenticatedClient = false;
+}
+
+namespace {
+
+String readConfiguredPin() {
+  auto& gdoc = ConfigStore::doc("general");
+  JsonVariant pinVariant = gdoc["pin"];
+  String expectedRaw;
+  if (pinVariant.isNull()) {
+    expectedRaw = F("0000");
+  } else if (pinVariant.is<const char*>()) {
+    expectedRaw = pinVariant.as<const char*>();
+  } else if (pinVariant.is<int>()) {
+    expectedRaw = String(pinVariant.as<int>());
+  } else if (pinVariant.is<long>()) {
+    expectedRaw = String(pinVariant.as<long>());
+  } else {
+    expectedRaw = pinVariant.as<String>();
+  }
+  return normalizePin(expectedRaw);
+}
+
 void ensureIndexHtmlPresent() {
   if (LittleFS.exists("/index.html")) {
     return;
@@ -407,11 +438,16 @@ AsyncWebSocket WebServer::_wsLogs("/ws/logs");
 int WebServer::_logClients = 0;
 bool WebServer::_started = false;
 bool WebServer::_hasAuthenticatedClient = false;
+String WebServer::_expectedPin;
 
 bool WebServer::begin() {
   ensureIndexHtmlPresent();
   _started = false;
   _hasAuthenticatedClient = false;
+  if (_expectedPin.length() != 4) {
+    String configured = readConfiguredPin();
+    WebServer::setExpectedPin(configured);
+  }
   // Initialise les appareils (multimÃƒÂ¨tre, oscilloscope, gÃƒÂ©nÃƒÂ©rateur)
   DMM::begin();
   Scope::begin();
@@ -475,21 +511,12 @@ bool WebServer::begin() {
         request->send(401, "application/json", "{\"success\":false,\"error\":\"PIN incorrect\"}");
         return;
       }
-      auto& gdoc = ConfigStore::doc("general");
-      JsonVariant pinVariant = gdoc["pin"];
-      String expectedRaw;
-      if (pinVariant.isNull()) {
-        expectedRaw = F("0000");
-      } else if (pinVariant.is<const char*>()) {
-        expectedRaw = pinVariant.as<const char*>();
-      } else if (pinVariant.is<int>()) {
-        expectedRaw = String(pinVariant.as<int>());
-      } else if (pinVariant.is<long>()) {
-        expectedRaw = String(pinVariant.as<long>());
-      } else {
-        expectedRaw = pinVariant.as<String>();
+      String expectedSanitized = WebServer::_expectedPin;
+      if (expectedSanitized.length() != 4) {
+        expectedSanitized = readConfiguredPin();
+        WebServer::setExpectedPin(expectedSanitized);
+        expectedSanitized = WebServer::_expectedPin;
       }
-      String expectedSanitized = normalizePin(expectedRaw);
 
       if (expectedSanitized.length() == 4) {
         OledPin::pushErrorMessage(String(F("PIN cfg=")) + expectedSanitized +
@@ -689,7 +716,9 @@ bool WebServer::begin() {
     cfg.clear();
     cfg = doc;
     ConfigStore::requestSave(area);
-    if (area == "io") {
+    if (area == "general") {
+      WebServer::setExpectedPin(cfg["pin"].as<String>());
+    } else if (area == "io") {
       IORegistry::begin();
     } else if (area == "dmm") {
       DMM::begin();

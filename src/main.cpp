@@ -311,6 +311,7 @@ void setup() {
   g_sessionPin = generateSessionPin();
   generalDoc["pin"] = g_sessionPin;
   ConfigStore::requestSave("general");
+  WebServer::setExpectedPin(g_sessionPin);
 
   bool apStarted = startAccessPointVerbose();
   if (!apStarted) {

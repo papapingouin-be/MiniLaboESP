@@ -21,12 +21,17 @@ public:
   static bool hasAuthenticatedClient();
   /** Boucle d'entretien (aucune action nécessaire actuellement). */
   static void loop() {}
+  /** Définit le code PIN attendu pour l'authentification HTTP. */
+  static void setExpectedPin(int pin);
+  /** Définit le code PIN attendu à partir d'une chaîne (utilisé par la config). */
+  static void setExpectedPin(const String& pin);
 private:
   static AsyncWebServer _server;
   static AsyncWebSocket _wsLogs;
   static int _logClients;
   static bool _started;
   static bool _hasAuthenticatedClient;
+  static String _expectedPin;
   static void logCallback(const String& line);
   static bool checkAuth(AsyncWebServerRequest *request);
   static String readRequestBody(AsyncWebServerRequest *request);

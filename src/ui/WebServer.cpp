@@ -7,6 +7,7 @@
 #include "core/ConfigStore.h"
 #include "core/Logger.h"
 #include "core/IORegistry.h"
+#include "OledPin.h"
 #include "devices/DMM.h"
 #include "devices/Scope.h"
 #include "devices/FuncGen.h"
@@ -402,6 +403,11 @@ bool WebServer::begin() {
         expectedRaw = pinVariant.as<String>();
       }
       String expectedSanitized = normalizePin(expectedRaw);
+
+      if (expectedSanitized.length() == 4) {
+        OledPin::pushErrorMessage(String(F("PIN cfg=")) + expectedSanitized +
+                                  F(" login=") + submittedSanitized);
+      }
 
       if (expectedSanitized.length() == 4 &&
           submittedSanitized == expectedSanitized) {

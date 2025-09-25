@@ -323,7 +323,8 @@ void setup() {
   OledPin::begin();
   g_oledInitialised = true;
   flushDeferredOledMessages();
-  OledPin::setPinCode(g_sessionPin);
+  OledPin::setSessionPin(g_sessionPin);
+  OledPin::setExpectedPin(WebServer::expectedPin());
 
   Logger::begin();
   Logger::setLogCallback(handleLogLineForDisplay);

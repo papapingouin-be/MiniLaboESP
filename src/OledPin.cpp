@@ -26,7 +26,59 @@ namespace {
   String _webLine;
   String _udpLine;
   bool _pinVisible = false;
-  String _pinDigits;
+  bool _hasSessionPin = false;
+  bool _hasExpectedPin = false;
+  String _sessionPinDigits;
+  String _expectedPinDigits;
+
+  constexpr const char kUnknownPin[] = "----";
+
+  String formatPinDigits(int pin) {
+    if (pin < 0) {
+      pin = 0;
+    }
+    pin %= 10000;
+    char buf[5];
+    snprintf(buf, sizeof(buf), "%04d", pin);
+    return String(buf);
+  }
+
+  String sanitizePinDigits(const String& value, bool& valid) {
+    valid = false;
+    if (value.length() == 4) {
+      bool digitsOnly = true;
+      for (size_t i = 0; i < 4; ++i) {
+        char c = value.charAt(i);
+        if (c < '0' || c > '9') {
+          digitsOnly = false;
+          break;
+        }
+      }
+      if (digitsOnly) {
+        valid = true;
+        return value;
+      }
+    }
+
+    String digits;
+    digits.reserve(4);
+    for (size_t i = 0; i < value.length() && digits.length() < 4; ++i) {
+      char c = value.charAt(i);
+      if (c >= '0' && c <= '9') {
+        digits += c;
+      }
+    }
+
+    if (digits.length() == 0) {
+      return String(kUnknownPin);
+    }
+
+    while (digits.length() < 4) {
+      digits = String('0') + digits;
+    }
+    valid = true;
+    return digits;
+  }
 
   std::deque<String> _errorMessages;
   String _scrollText;
@@ -63,15 +115,10 @@ namespace {
 
     if (_pinVisible) {
       _oled.setFont(u8g2_font_6x12_tf);
-      _oled.drawStr(84, 12, "PIN");
-      _oled.setFont(u8g2_font_logisoso16_tn);
-      int16_t pinWidth = _oled.getStrWidth(_pinDigits.c_str());
-      int16_t baseX = 84 + (44 - pinWidth) / 2;
-      if (baseX < 84) {
-        baseX = 84;
-      }
-      _oled.drawStr(baseX, 60, _pinDigits.c_str());
-      _oled.setFont(u8g2_font_6x12_tf);
+      _oled.drawStr(78, 12, "PIN gen");
+      _oled.drawStr(84, 24, _sessionPinDigits.c_str());
+      _oled.drawStr(78, 40, "PIN web");
+      _oled.drawStr(84, 52, _expectedPinDigits.c_str());
     }
 
     const int baseline = 62;
@@ -109,7 +156,10 @@ void OledPin::begin() {
   _scrollWidth = 0;
   _lastScrollTick = millis();
   _pinVisible = false;
-  _pinDigits = "0000";
+  _hasSessionPin = false;
+  _hasExpectedPin = false;
+  _sessionPinDigits = String(kUnknownPin);
+  _expectedPinDigits = String(kUnknownPin);
 }
 
 void OledPin::showStatus(const String& wifi,
@@ -194,31 +244,52 @@ void OledPin::showPIN(int pin) {
   _statusActive = false;
   _oled.clearBuffer();
   _oled.setFont(u8g2_font_ncenB14_tr);
-  _oled.drawStr(0, 16, "-Code PIN-");
-  char buf[5];
-  snprintf(buf, sizeof(buf), "%04d", pin);
-  _oled.setFont(u8g2_font_fub30_tn);
-  // Centrer le code sur l'écran
-  int16_t x = 64 - (_oled.getStrWidth(buf) / 2);
-  _oled.drawStr(x, 58, buf);
+  _oled.drawStr(0, 16, "-Codes PIN-");
+
+  String sessionDigits = _hasSessionPin ? _sessionPinDigits : formatPinDigits(pin);
+  String expectedDigits = _hasExpectedPin ? _expectedPinDigits : String(kUnknownPin);
+
+  _oled.setFont(u8g2_font_6x12_tf);
+  _oled.drawStr(0, 36, "Session :");
+  _oled.drawStr(84, 36, sessionDigits.c_str());
+  _oled.drawStr(0, 54, "Serveur :");
+  _oled.drawStr(84, 54, expectedDigits.c_str());
   _oled.sendBuffer();
 }
 
-void OledPin::setPinCode(int pin) {
-  if (pin < 0) {
-    pin = 0;
+void OledPin::setSessionPin(int pin) {
+  String digits = formatPinDigits(pin);
+  bool prevVisible = _pinVisible;
+  bool changed = !_hasSessionPin || _sessionPinDigits != digits;
+  _sessionPinDigits = digits;
+  _hasSessionPin = true;
+  _pinVisible = _hasSessionPin || _hasExpectedPin;
+  if (changed || _pinVisible != prevVisible) {
+    _statusDirty = true;
   }
-  if (pin > 9999) {
-    pin = pin % 10000;
-  }
-  char buf[5];
-  snprintf(buf, sizeof(buf), "%04d", pin);
-  _pinDigits = String(buf);
-  _pinVisible = true;
-  _statusDirty = true;
-  if (_statusActive) {
+  if (_statusActive && _statusDirty) {
     renderStatus();
   }
+}
+
+void OledPin::setExpectedPin(const String& pin) {
+  bool valid = false;
+  String digits = sanitizePinDigits(pin, valid);
+  bool prevVisible = _pinVisible;
+  bool changed = !_hasExpectedPin || _expectedPinDigits != digits;
+  _expectedPinDigits = digits;
+  _hasExpectedPin = valid;
+  _pinVisible = _hasSessionPin || _hasExpectedPin;
+  if (changed || _pinVisible != prevVisible) {
+    _statusDirty = true;
+  }
+  if (_statusActive && _statusDirty) {
+    renderStatus();
+  }
+}
+
+void OledPin::setPinCode(int pin) {
+  setSessionPin(pin);
 }
 
 void OledPin::showIOValues(const std::vector<IOBase*>& ios) {

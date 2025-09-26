@@ -6,6 +6,7 @@
 #include "OledPin.h"
 #include "core/IORegistry.h"
 
+#include <Wire.h>
 #include <deque>
 
 // Définit un écran SSD1306 128x64 I2C en mode matériel.  Les broches
@@ -170,6 +171,10 @@ namespace {
 }
 
 void OledPin::begin() {
+  // Assure que le bus I2C est initialisé sur les broches attendues par le
+  // câblage fourni (SDA=12, SCL=14). Sans cette étape, l'écran reste muet car
+  // l'ESP8266 démarre le bus sur ses broches par défaut (D2/D1).
+  Wire.begin(/*sda=*/12, /*scl=*/14);
   _oled.begin();
   _oled.setPowerSave(0);
   _statusActive = false;

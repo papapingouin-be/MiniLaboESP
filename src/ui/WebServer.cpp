@@ -729,7 +729,7 @@ bool WebServer::begin() {
   });
 
   // Route statique pour servir les fichiers depuis LittleFS
-  _server.serveStatic("/", LittleFS, "/").setDefaultFile("/index.html");
+  _server.serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
   // Route POST /login
   _server.on("/login", HTTP_POST, [](AsyncWebServerRequest *request) {

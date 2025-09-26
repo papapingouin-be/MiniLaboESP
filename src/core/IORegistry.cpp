@@ -112,11 +112,16 @@ float IO_ADS1115::readRaw() {
     ads = new Adafruit_ADS1115();
     if (!ads->begin(_address)) {
       Logger::error("IO", "ADS1115", String("Failed to init ADS1115 at 0x") + String(_address, HEX));
-      // Conserver l'instance malgré tout pour éviter les nullptr
+      delete ads;
+      ads = nullptr;
     }
     _adsDevices[_address] = ads;
   } else {
     ads = it->second;
+  }
+  if (!ads) {
+    // Périphérique indisponible : retourner une mesure nulle pour éviter les crashs.
+    return 0.0f;
   }
   // Configurer le gain en fonction de la pleine échelle souhaitée
   ads->setGain(pgaToGain(_pga));

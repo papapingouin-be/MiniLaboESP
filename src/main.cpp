@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <ESP8266WiFi.h>
 #include <LittleFS.h>
+#include <ArduinoJson.h>
 
 #include <vector>
 
@@ -57,6 +58,9 @@ unsigned long g_lastLoggerTick = 0;
 WiFiEventHandler g_apStationConnectedHandler;
 WiFiEventHandler g_apStationDisconnectedHandler;
 String g_accessPointSsid;
+String g_accessPointPassword;
+int g_accessPointChannel = 1;
+bool g_accessPointHidden = false;
 int g_sessionPin = 0;
 unsigned long g_lastIoDisplay = 0;
 
@@ -94,12 +98,63 @@ String computeWifiHardware() {
   return macStr + String(" C") + channel + String("/") + phy;
 }
 
-String computeAccessPointSsid() {
+String computeDefaultAccessPointSsid() {
   uint8_t mac[6];
   WiFi.softAPmacAddress(mac);
   String macCompact = formatMacCompact(mac);
   String suffix = macCompact.substring(8);
   return String(kAccessPointSsidPrefix) + "-" + suffix;
+}
+
+String trimmedString(const char* value) {
+  if (!value) {
+    return String();
+  }
+  String result(value);
+  result.trim();
+  return result;
+}
+
+void loadAccessPointConfig() {
+  g_accessPointSsid = String();
+  g_accessPointPassword = String();
+  g_accessPointChannel = 1;
+  g_accessPointHidden = false;
+
+  JsonDocument& netDoc = ConfigStore::doc("network");
+  JsonVariant apVariant = netDoc["ap"];
+  if (!apVariant.isNull()) {
+    const char* cfgSsid = apVariant["ssid"] | "";
+    const char* cfgPassword = apVariant["password"] | "";
+    int cfgChannel = apVariant["channel"] | 1;
+    bool cfgHidden = apVariant["hidden"] | false;
+
+    g_accessPointSsid = trimmedString(cfgSsid);
+    g_accessPointPassword = trimmedString(cfgPassword);
+    g_accessPointChannel = constrain(cfgChannel, 1, 13);
+    g_accessPointHidden = cfgHidden;
+  }
+
+  if (g_accessPointSsid.isEmpty()) {
+    g_accessPointSsid = computeDefaultAccessPointSsid();
+  }
+}
+
+const char* selectAccessPointPassword(bool verbose, bool logWarning) {
+  if (g_accessPointPassword.length() == 0) {
+    return nullptr;
+  }
+  if (g_accessPointPassword.length() < 8) {
+    if (verbose) {
+      Serial.println(F("[MiniLabo] Mot de passe AP trop court (<8), AP ouvert"));
+    }
+    if (logWarning) {
+      Logger::warn("NET", "AP", "AP password too short, using open AP");
+    }
+    enqueueOledMessage(F("AP pass <8, ouvert"));
+    return nullptr;
+  }
+  return g_accessPointPassword.c_str();
 }
 
 void enqueueOledMessage(const String& message) {
@@ -209,9 +264,15 @@ bool startAccessPointVerbose() {
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_AP);
 
-  g_accessPointSsid = computeAccessPointSsid();
+  if (g_accessPointSsid.isEmpty()) {
+    g_accessPointSsid = computeDefaultAccessPointSsid();
+  }
 
-  if (!WiFi.softAP(g_accessPointSsid.c_str())) {
+  const char* password = selectAccessPointPassword(true, false);
+  int channel = constrain(g_accessPointChannel, 1, 13);
+  bool hidden = g_accessPointHidden;
+
+  if (!WiFi.softAP(g_accessPointSsid.c_str(), password, channel, hidden)) {
     Serial.println(F("[MiniLabo] Impossible de démarrer le point d'accès"));
     g_status.wifiLine = F("WiFi: ERROR");
     g_status.wifiHardware = F("AP init failed");
@@ -240,9 +301,15 @@ bool startAccessPointSilent() {
   WiFi.disconnect(true);
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_AP);
-  g_accessPointSsid = computeAccessPointSsid();
+  if (g_accessPointSsid.isEmpty()) {
+    g_accessPointSsid = computeDefaultAccessPointSsid();
+  }
 
-  if (!WiFi.softAP(g_accessPointSsid.c_str())) {
+  const char* password = selectAccessPointPassword(false, true);
+  int channel = constrain(g_accessPointChannel, 1, 13);
+  bool hidden = g_accessPointHidden;
+
+  if (!WiFi.softAP(g_accessPointSsid.c_str(), password, channel, hidden)) {
     g_status.wifiLine = F("WiFi: ERROR");
     g_status.wifiHardware = F("AP init failed");
     enqueueOledMessage(F("softAP restart failed"));
@@ -261,13 +328,14 @@ bool startAccessPointSilent() {
 
 void maintainAccessPoint() {
   if (WiFi.getMode() != WIFI_AP) {
+    loadAccessPointConfig();
     if (!startAccessPointSilent()) {
       Logger::error("NET", "maintain", "Failed to restart AP");
     }
   }
   if (WiFi.getMode() == WIFI_AP) {
     if (g_accessPointSsid.isEmpty()) {
-      g_accessPointSsid = computeAccessPointSsid();
+      g_accessPointSsid = computeDefaultAccessPointSsid();
     }
     g_status.wifiLine = String(F("WiFi: AP ")) + g_accessPointSsid;
     g_status.wifiHardware = computeWifiHardware();
@@ -312,6 +380,8 @@ void setup() {
   generalDoc["pin"] = g_sessionPin;
   ConfigStore::requestSave("general");
   WebServer::setExpectedPin(g_sessionPin);
+
+  loadAccessPointConfig();
 
   bool apStarted = startAccessPointVerbose();
   if (!apStarted) {

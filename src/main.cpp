@@ -115,6 +115,8 @@ String trimmedString(const char* value) {
   return result;
 }
 
+void enqueueOledMessage(const String& message);
+
 void loadAccessPointConfig() {
   g_accessPointSsid = String();
   g_accessPointPassword = String();

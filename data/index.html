@@ -4,114 +4,27 @@
   <meta charset="UTF-8">
   <title>MiniLabo Dashboard</title>
   <style>
-    body {
-      background:#f3f4f6;
-      color:#111827;
-      font-family:Arial,Helvetica,sans-serif;
-      margin:0;
-    }
-    header {
-      padding:1rem;
-      text-align:center;
-      font-size:1.5rem;
-      background:#2563eb;
-      color:#f8fafc;
-      border-bottom:1px solid #1d4ed8;
-    }
-    #loginForm {
-      width:320px;
-      margin:5rem auto;
-      padding:2rem;
-      background:#ffffff;
-      color:#111827;
-      border-radius:0.75rem;
-      box-shadow:0 15px 35px rgba(15,23,42,0.15);
-    }
-    #loginForm input {
-      width:100%;
-      padding:0.5rem;
-      margin:0.5rem 0;
-      background:#1e3a8a;
-      border:1px solid #1d4ed8;
-      border-radius:0.4rem;
-      color:#ffffff;
-    }
-    #loginForm .numpad {
-      display:grid;
-      grid-template-columns:repeat(3,1fr);
-      gap:0.5rem;
-      margin-top:1rem;
-    }
-    #loginForm .numpad button {
-      background:#2563eb;
-      color:#f8fafc;
-      padding:0.75rem;
-      font-size:1.2rem;
-      border-radius:0.5rem;
-      border:none;
-      box-shadow:0 4px 10px rgba(37,99,235,0.25);
-    }
-    #loginForm .numpad button:hover {
-      background:#1d4ed8;
-    }
-    #loginForm .numpad-actions {
-      display:flex;
-      gap:0.5rem;
-      margin-top:0.5rem;
-    }
-    #loginForm .numpad-actions button {
-      flex:1;
-      background:#1e3a8a;
-      color:#f8fafc;
-      border:none;
-      border-radius:0.5rem;
-    }
-    #dashboard {
-      display:none;
-      padding:1rem;
-    }
-    .cards {
-      display:flex;
-      flex-wrap:wrap;
-      gap:1rem;
-    }
-    .card {
-      background:#ffffff;
-      border:1px solid #e2e8f0;
-      border-radius:0.75rem;
-      padding:1rem;
-      flex:1;
-      min-width:250px;
-      box-shadow:0 10px 25px rgba(15,23,42,0.08);
-    }
-    button {
-      background:#2563eb;
-      color:#f8fafc;
-      border:none;
-      padding:0.5rem 1rem;
-      border-radius:0.4rem;
-      cursor:pointer;
-      transition:background 0.2s ease;
-    }
-    button:hover {
-      background:#1d4ed8;
-    }
-    input, select {
-      background:#f8fafc;
-      border:1px solid #cbd5f5;
-      color:#0f172a;
-      border-radius:0.4rem;
-      padding:0.3rem;
-    }
-    #logsPanel {
-      background:#ffffff;
-      border:1px solid #e2e8f0;
-      max-height:200px;
-      overflow:auto;
-      padding:0.5rem;
-      margin-top:1rem;
-      box-shadow:inset 0 1px 3px rgba(15,23,42,0.1);
-    }
+    body { background:#f4f6fb; color:#1f2933; font-family:Arial,Helvetica,sans-serif; margin:0; }
+    header { padding:1.25rem; text-align:center; font-size:1.6rem; background:#ffffff; color:#1f2933; border-bottom:1px solid #d0d7de; box-shadow:0 2px 6px rgba(15,23,42,0.08); }
+    #loginForm { width:320px; margin:4rem auto; padding:2.25rem; background:#ffffff; color:#1f2933; border-radius:0.85rem; box-shadow:0 18px 40px rgba(15,23,42,0.18); }
+    #loginForm input { width:100%; padding:0.65rem; margin:0.5rem 0; background:#f9fafc; border:1px solid #cbd5e1; border-radius:0.55rem; color:#1f2933; box-shadow:inset 0 1px 2px rgba(15,23,42,0.05); }
+    #loginForm .numpad { display:grid; grid-template-columns:repeat(3,1fr); gap:0.6rem; margin-top:1.2rem; }
+    #loginForm .numpad button { background:#e2e8f0; color:#1f2933; padding:0.85rem; font-size:1.25rem; border:none; border-radius:0.6rem; transition:background 0.2s ease, transform 0.1s ease; }
+    #loginForm .numpad button:hover { background:#cbd5f5; transform:translateY(-1px); }
+    #loginForm .numpad-actions { display:flex; gap:0.6rem; margin-top:0.6rem; }
+    #loginForm .numpad-actions button { flex:1; background:#dbeafe; color:#1f2937; border:none; border-radius:0.6rem; }
+    #dashboard { display:none; padding:1.5rem; }
+    .cards { display:flex; flex-wrap:wrap; gap:1.25rem; }
+    .card { background:#ffffff; border:1px solid #e2e8f0; border-radius:0.85rem; padding:1.25rem; flex:1; min-width:250px; box-shadow:0 12px 30px rgba(15,23,42,0.12); }
+    button { background:#2563eb; color:#fff; border:none; padding:0.6rem 1.2rem; border-radius:0.5rem; cursor:pointer; transition:background 0.2s ease, transform 0.1s ease; }
+    button:hover { background:#1d4ed8; transform:translateY(-1px); }
+    input, select { background:#f9fafc; border:1px solid #cbd5e1; color:#1f2933; border-radius:0.5rem; padding:0.4rem 0.5rem; box-shadow:inset 0 1px 2px rgba(15,23,42,0.05); }
+    #logsPanel { background:#f9fafc; border:1px solid #d0d7de; max-height:220px; overflow:auto; padding:0.75rem; margin-top:1rem; border-radius:0.6rem; box-shadow:inset 0 1px 3px rgba(15,23,42,0.1); }
+    #debugToggle { display:inline-block; margin-top:0.75rem; color:#2563eb; text-decoration:none; font-size:0.95rem; }
+    #debugToggle:hover { text-decoration:underline; }
+    #debugPanel { display:none; margin-top:0.75rem; background:#f9fafc; border:1px solid #d0d7de; border-radius:0.6rem; padding:0.75rem; box-shadow:inset 0 1px 3px rgba(15,23,42,0.1); }
+    #debugPanel h3 { margin-top:0; font-size:1rem; color:#1f2933; }
+    #debugLog { max-height:160px; overflow:auto; background:#ffffff; border:1px solid #cbd5e1; border-radius:0.5rem; padding:0.5rem; font-size:0.85rem; line-height:1.3; }
   </style>
 </head>
 <body>
@@ -139,8 +52,13 @@
       <button type="button" onclick="backspacePin()">⌫</button>
     </div>
     <button type="button" onclick="login()">Se connecter</button>
-    <button type="button" onclick="triggerOledTest()" style="margin-top:0.5rem;">Test OLED</button>
+    <button type="button" onclick="triggerOledTest()" style="margin-top:0.6rem;">Test OLED</button>
     <p id="loginStatus" style="color:red;"></p>
+    <a href="#" id="debugToggle" onclick="toggleDebug(event)">Afficher le debug</a>
+    <div id="debugPanel">
+      <h3>Debug</h3>
+      <pre id="debugLog"></pre>
+    </div>
   </div>
   <div id="dashboard">
     <div class="cards">
@@ -153,7 +71,7 @@
       </div>
       <div class="card" id="cardScope">
         <h3>Oscilloscope</h3>
-        <canvas id="scopeCanvas" width="300" height="150" style="background:#f8fafc;border:1px solid #cbd5f5;border-radius:0.5rem;"></canvas>
+        <canvas id="scopeCanvas" width="300" height="150" style="background:#f1f5f9;border:1px solid #cbd5e1;border-radius:0.5rem;"></canvas>
         <p>En développement...</p>
       </div>
       <div class="card" id="cardFunc">
@@ -183,25 +101,120 @@
   </div>
   <script>
     const pinInput = document.getElementById('pinInput');
+    const debugPanel = document.getElementById('debugPanel');
+    const debugLog = document.getElementById('debugLog');
+    const debugToggleLink = document.getElementById('debugToggle');
     let lastSentPin = '';
+    let uiSocket = null;
+    const pendingUiEvents = [];
+    const UI_SOCKET_RETRY_MS = 3000;
+
+    function flushPendingUiEvents() {
+      if (!uiSocket || uiSocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      while (pendingUiEvents.length) {
+        const payload = pendingUiEvents.shift();
+        try {
+          uiSocket.send(payload);
+          try {
+            const parsed = JSON.parse(payload);
+            appendDebug(`event ws (retry) => ${parsed.type || '?'}`);
+          } catch (_) {
+            appendDebug('event ws (retry)');
+          }
+        } catch (err) {
+          console.warn('ui socket retry error', err);
+          appendDebug(`event ws retry erreur: ${err}`);
+          pendingUiEvents.unshift(payload);
+          break;
+        }
+      }
+    }
+
+    function ensureUiSocket() {
+      if (uiSocket && (uiSocket.readyState === WebSocket.OPEN || uiSocket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      connectUiSocket();
+    }
+
+    function connectUiSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      try {
+        uiSocket = new WebSocket(protocol + window.location.host + '/ws/ui');
+      } catch (err) {
+        console.warn('ui socket init error', err);
+        appendDebug(`ui socket init erreur: ${err}`);
+        uiSocket = null;
+        return;
+      }
+      uiSocket.addEventListener('open', () => {
+        appendDebug('UI socket connecté');
+        flushPendingUiEvents();
+      });
+      uiSocket.addEventListener('message', (event) => {
+        if (event && event.data) {
+          appendDebug(`ui <= ${event.data}`);
+        }
+      });
+      uiSocket.addEventListener('close', () => {
+        appendDebug('UI socket fermé');
+        uiSocket = null;
+        setTimeout(ensureUiSocket, UI_SOCKET_RETRY_MS);
+      });
+      uiSocket.addEventListener('error', (event) => {
+        console.warn('ui socket error', event);
+        appendDebug('ui socket erreur');
+      });
+    }
+
+    function toggleDebug(event) {
+      if (event) {
+        event.preventDefault();
+      }
+      if (!debugPanel || !debugToggleLink) {
+        return false;
+      }
+      const isHidden = debugPanel.style.display === 'none' || debugPanel.style.display === '';
+      debugPanel.style.display = isHidden ? 'block' : 'none';
+      debugToggleLink.textContent = isHidden ? 'Masquer le debug' : 'Afficher le debug';
+      if (!isHidden && debugLog) {
+        debugLog.scrollTop = debugLog.scrollHeight;
+      }
+      return false;
+    }
+
+    function appendDebug(message) {
+      if (!debugLog) {
+        return;
+      }
+      const timestamp = new Date().toISOString();
+      debugLog.textContent += `[${timestamp}] ${message}\n`;
+      if (debugLog.textContent.length > 8000) {
+        debugLog.textContent = debugLog.textContent.slice(debugLog.textContent.length - 8000);
+      }
+      debugLog.scrollTop = debugLog.scrollHeight;
+    }
+
+    ensureUiSocket();
 
     async function sendLoginEvent(type, details) {
       const payloadObj = Object.assign({type:type}, details || {});
       const payloadJson = JSON.stringify(payloadObj);
       const debugDetails = JSON.stringify(details || {});
-
-      try {
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          const sent = navigator.sendBeacon('/api/login/event', new Blob([payloadJson], {type:'application/json'}));
-          if (sent) {
-            console.debug('login event beacon sent', type, details);
-            return;
-          }
-          console.debug('login event beacon failed', type, details);
+      if (uiSocket && uiSocket.readyState === WebSocket.OPEN) {
+        try {
+          uiSocket.send(payloadJson);
+          appendDebug(`event ws => ${type} ${debugDetails}`);
+          return;
+        } catch (err) {
+          console.warn('ui socket send error', err);
+          appendDebug(`event ws erreur => ${err}`);
         }
-      } catch (e) {
-        console.warn('login event beacon error', e);
       }
+
+      ensureUiSocket();
 
       try {
         const response = await fetch('/api/login/event', {
@@ -212,9 +225,18 @@
           cache:'no-store',
           body: payloadJson
         });
-        console.debug('login event sent', type, debugDetails, response.status);
+        appendDebug(`event http => ${type} ${debugDetails} status=${response.status}`);
+        if (!response.ok) {
+          throw new Error('HTTP '+response.status);
+        }
       } catch (e) {
-        console.warn('login event error', e);
+        console.warn('login event http error', e);
+        appendDebug(`event http erreur => ${e}`);
+        pendingUiEvents.push(payloadJson);
+        if (pendingUiEvents.length > 20) {
+          pendingUiEvents.shift();
+        }
+        flushPendingUiEvents();
       }
     }
 
@@ -222,7 +244,8 @@
       const pin = sanitizePin(pinInput.value);
       if (pin !== lastSentPin) {
         lastSentPin = pin;
-        sendLoginEvent('pin_update', {pin:pin});
+        sendLoginEvent('pin_update', {pin: pin});
+        appendDebug(`pin_update local => ${pin}`);
       }
     }
 
@@ -266,13 +289,10 @@
     sendLoginEvent('page_load');
     notifyPinChange();
 
-    // Fonction de connexion : envoie le PIN au serveur et gère la réponse
     function triggerOledTest() {
       sendLoginEvent('test_message', {message:'test'});
       if (typeof appendDebug === 'function') {
         appendDebug('test_message envoyé');
-      } else {
-        console.debug('test_message envoyé');
       }
     }
 
@@ -285,100 +305,140 @@
         credentials:'same-origin',
         body: JSON.stringify({pin:pin})
       }).then(r => r.json()).then(data => {
+        appendDebug(`login response => ${JSON.stringify(data)}`);
         if (data.success) {
           document.getElementById('loginForm').style.display='none';
           document.getElementById('dashboard').style.display='block';
           loadIO();
-          loadDMM();
-          setInterval(loadDMM, 1000);
+          loadFuncTargets();
+          loadDmmChannels();
+          startLogs();
           sendLoginEvent('login_result', {success:true, message:'Connexion OK', pin:pin});
         } else {
-          document.getElementById('loginStatus').innerText = data.error || 'Échec';
-          sendLoginEvent('login_result', {success:false, message:data.error || 'Échec', pin:pin});
+          document.getElementById('loginStatus').innerText='PIN incorrect';
+          sendLoginEvent('login_result', {success:false, message:'PIN incorrect', pin:pin});
         }
-      }).catch((err) => {
-        document.getElementById('loginStatus').innerText = 'Erreur de connexion';
-        sendLoginEvent('login_result', {success:false, message:'Erreur de connexion', pin:pin});
+      }).catch(err => {
+        document.getElementById('loginStatus').innerText='Erreur: '+err;
+        appendDebug(`login error => ${err}`);
+        sendLoginEvent('login_result', {success:false, message:'Erreur: '+err, pin:pin});
       });
     }
-    // Charge la liste des IO et met à jour les sélecteurs et la liste
+
+    function checkAuthResponse(resp) {
+      if (resp.status === 401) {
+        document.getElementById('loginForm').style.display='block';
+        document.getElementById('dashboard').style.display='none';
+        document.getElementById('loginStatus').innerText='Veuillez vous reconnecter';
+        throw new Error('Unauthorized');
+      }
+      return resp;
+    }
+
     function loadIO() {
-      fetch('/api/io', {credentials:'same-origin'}).then(r => r.json()).then(data => {
-        const dmmSel = document.getElementById('dmmSelect');
-        const funcSel = document.getElementById('funcTarget');
-        dmmSel.innerHTML='';
-        funcSel.innerHTML='';
+      fetch('/api/io', {credentials:'same-origin'})
+        .then(checkAuthResponse)
+        .then(r => r.json()).then(data => {
         const list = document.getElementById('ioList');
         list.innerHTML='';
-        data.forEach(io => {
-          const opt1=document.createElement('option');
-          opt1.value=io.id;
-          opt1.innerText=io.id;
-          dmmSel.appendChild(opt1);
-          const opt2=document.createElement('option');
-          opt2.value=io.id;
-          opt2.innerText=io.id;
-          funcSel.appendChild(opt2);
-          const li=document.createElement('li');
-          li.textContent = io.id + ' : ' + io.raw.toFixed(3);
+        (data || []).forEach(io => {
+          const li = document.createElement('li');
+          li.textContent = io.id+': '+io.raw;
           list.appendChild(li);
         });
       });
     }
-    // Charge les valeurs du multimètre et met à jour l'affichage
-    function loadDMM() {
-      fetch('/api/dmm', {credentials:'same-origin'}).then(r => r.json()).then(data => {
-        const div=document.getElementById('dmmValues');
-        div.innerHTML='';
-        for (const ch in data) {
-          const p=document.createElement('p');
-          p.textContent = ch + ' : ' + data[ch] + ' V';
-          div.appendChild(p);
+
+    function loadDmmChannels() {
+      fetch('/api/dmm', {credentials:'same-origin'})
+        .then(checkAuthResponse)
+        .then(r => r.json()).then(data => {
+        const select = document.getElementById('dmmSelect');
+        select.innerHTML='';
+        if (data.channels) {
+          data.channels.forEach((ch, idx) => {
+            const opt = document.createElement('option');
+            opt.value = idx;
+            opt.textContent = ch.name;
+            select.appendChild(opt);
+          });
+        }
+        if (data.display) {
+          document.getElementById('dmmValues').textContent = data.display;
         }
       });
     }
-    // Envoie la configuration du générateur au serveur
+
+    function loadFuncTargets() {
+      fetch('/api/config/funcgen', {credentials:'same-origin'})
+        .then(checkAuthResponse)
+        .then(r => r.json()).then(cfg => {
+        const select = document.getElementById('funcTarget');
+        select.innerHTML='';
+        if (cfg.targets) {
+          cfg.targets.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.id;
+            opt.textContent = t.name || t.id;
+            select.appendChild(opt);
+          });
+        }
+      });
+    }
+
     function updateFunc() {
-      const target=document.getElementById('funcTarget').value;
-      const freq=parseFloat(document.getElementById('funcFreq').value);
-      const amp=parseFloat(document.getElementById('funcAmp').value);
-      const off=parseFloat(document.getElementById('funcOff').value);
-      const wave=document.getElementById('funcWave').value;
+      const payload = {
+        target: document.getElementById('funcTarget').value,
+        freq: parseFloat(document.getElementById('funcFreq').value),
+        amplitude: parseFloat(document.getElementById('funcAmp').value),
+        offset: parseFloat(document.getElementById('funcOff').value),
+        wave: document.getElementById('funcWave').value
+      };
       fetch('/api/funcgen', {
         method:'POST',
         headers:{'Content-Type':'application/json'},
         credentials:'same-origin',
-        body: JSON.stringify({target:target,freq:freq,amplitude:amp,offset:off,wave:wave})
-      }).then(r => r.json()).then(data => {
-        if(!data.success) alert('Erreur lors de la mise à jour du générateur');
-      });
+        body: JSON.stringify(payload)
+      }).then(checkAuthResponse).then(r => r.json()).then(resp => {
+        if (!resp.success) {
+          alert('Erreur lors de la mise à jour du générateur');
+        }
+      }).catch(err => alert('Erreur réseau: '+err));
     }
-    // Gestion des logs en WebSocket
-    let ws=null;
-    let logsVisible=false;
+
+    let logsVisible = false;
+    let ws;
+
     function toggleLogs() {
-      const panel=document.getElementById('logsPanel');
-      const btn=document.getElementById('logsBtn');
-      if(!logsVisible) {
-        panel.style.display='block';
-        btn.textContent='Masquer les logs';
-        logsVisible=true;
-        ws=new WebSocket((location.protocol==='https:'?'wss':'ws')+'://'+location.host+'/ws/logs');
-        ws.onmessage=function(ev) {
-          const line=document.createElement('div');
-          line.textContent=ev.data;
-          panel.appendChild(line);
-          panel.scrollTop=panel.scrollHeight;
-        };
-        ws.onclose=function(){ logsVisible=false; btn.textContent='Afficher les logs'; panel.style.display='none'; };
-      } else {
-        if(ws) ws.close();
-        ws=null;
-        logsVisible=false;
-        btn.textContent='Afficher les logs';
-        panel.style.display='none';
+      logsVisible = !logsVisible;
+      document.getElementById('logsPanel').style.display = logsVisible ? 'block' : 'none';
+      document.getElementById('logsBtn').innerText = logsVisible ? 'Masquer les logs' : 'Afficher les logs';
+      if (logsVisible) {
+        startLogs();
+      } else if (ws) {
+        ws.close();
       }
     }
+
+    function startLogs() {
+      if (ws) {
+        ws.close();
+      }
+      ws = new WebSocket('ws://'+window.location.host+'/ws/logs');
+      ws.onmessage = (evt) => {
+        const panel = document.getElementById('logsPanel');
+        panel.textContent += evt.data+'\n';
+        panel.scrollTop = panel.scrollHeight;
+      };
+      ws.onclose = () => { ws = null; };
+    }
+
+    setInterval(() => {
+      if (document.getElementById('dashboard').style.display === 'block') {
+        loadIO();
+        loadDmmChannels();
+      }
+    }, 2000);
   </script>
 </body>
 </html>

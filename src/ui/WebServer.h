@@ -30,7 +30,9 @@ public:
 private:
   static AsyncWebServer _server;
   static AsyncWebSocket _wsLogs;
+  static AsyncWebSocket _wsUi;
   static int _logClients;
+  static int _uiClients;
   static bool _started;
   static bool _hasAuthenticatedClient;
   static String _expectedPin;

@@ -123,6 +123,69 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     const debugLog = document.getElementById('debugLog');
     const debugToggleLink = document.getElementById('debugToggle');
     let lastSentPin = '';
+    let uiSocket = null;
+    const pendingUiEvents = [];
+    const UI_SOCKET_RETRY_MS = 3000;
+
+    function flushPendingUiEvents() {
+      if (!uiSocket || uiSocket.readyState !== WebSocket.OPEN) {
+        return;
+      }
+      while (pendingUiEvents.length) {
+        const payload = pendingUiEvents.shift();
+        try {
+          uiSocket.send(payload);
+          try {
+            const parsed = JSON.parse(payload);
+            appendDebug(`event ws (retry) => ${parsed.type || '?'}`);
+          } catch (_) {
+            appendDebug('event ws (retry)');
+          }
+        } catch (err) {
+          console.warn('ui socket retry error', err);
+          appendDebug(`event ws retry erreur: ${err}`);
+          pendingUiEvents.unshift(payload);
+          break;
+        }
+      }
+    }
+
+    function ensureUiSocket() {
+      if (uiSocket && (uiSocket.readyState === WebSocket.OPEN || uiSocket.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      connectUiSocket();
+    }
+
+    function connectUiSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss://' : 'ws://';
+      try {
+        uiSocket = new WebSocket(protocol + window.location.host + '/ws/ui');
+      } catch (err) {
+        console.warn('ui socket init error', err);
+        appendDebug(`ui socket init erreur: ${err}`);
+        uiSocket = null;
+        return;
+      }
+      uiSocket.addEventListener('open', () => {
+        appendDebug('UI socket connecté');
+        flushPendingUiEvents();
+      });
+      uiSocket.addEventListener('message', (event) => {
+        if (event && event.data) {
+          appendDebug(`ui <= ${event.data}`);
+        }
+      });
+      uiSocket.addEventListener('close', () => {
+        appendDebug('UI socket fermé');
+        uiSocket = null;
+        setTimeout(ensureUiSocket, UI_SOCKET_RETRY_MS);
+      });
+      uiSocket.addEventListener('error', (event) => {
+        console.warn('ui socket error', event);
+        appendDebug('ui socket erreur');
+      });
+    }
 
     function toggleDebug(event) {
       if (event) {
@@ -152,24 +215,24 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       debugLog.scrollTop = debugLog.scrollHeight;
     }
 
+    ensureUiSocket();
+
     async function sendLoginEvent(type, details) {
       const payloadObj = Object.assign({type:type}, details || {});
       const payloadJson = JSON.stringify(payloadObj);
       const debugDetails = JSON.stringify(details || {});
-
-      try {
-        if (typeof navigator !== 'undefined' && typeof navigator.sendBeacon === 'function') {
-          const sent = navigator.sendBeacon('/api/login/event', new Blob([payloadJson], {type:'application/json'}));
-          if (sent) {
-            appendDebug(`event => ${type} ${debugDetails} (beacon)`);
-            return;
-          }
-          appendDebug(`event beacon failed => ${type} ${debugDetails}`);
+      if (uiSocket && uiSocket.readyState === WebSocket.OPEN) {
+        try {
+          uiSocket.send(payloadJson);
+          appendDebug(`event ws => ${type} ${debugDetails}`);
+          return;
+        } catch (err) {
+          console.warn('ui socket send error', err);
+          appendDebug(`event ws erreur => ${err}`);
         }
-      } catch (e) {
-        console.warn('login event beacon error', e);
-        appendDebug(`event beacon error: ${e}`);
       }
+
+      ensureUiSocket();
 
       try {
         const response = await fetch('/api/login/event', {
@@ -180,10 +243,18 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
           cache:'no-store',
           body: payloadJson
         });
-        appendDebug(`event => ${type} ${debugDetails} status=${response.status}`);
+        appendDebug(`event http => ${type} ${debugDetails} status=${response.status}`);
+        if (!response.ok) {
+          throw new Error('HTTP '+response.status);
+        }
       } catch (e) {
-        console.warn('login event error', e);
-        appendDebug(`event error: ${e}`);
+        console.warn('login event http error', e);
+        appendDebug(`event http erreur => ${e}`);
+        pendingUiEvents.push(payloadJson);
+        if (pendingUiEvents.length > 20) {
+          pendingUiEvents.shift();
+        }
+        flushPendingUiEvents();
       }
     }
 
@@ -413,6 +484,70 @@ String normalizePin(const String& value) {
   return digits;
 }
 
+bool handleLoginEventPayload(JsonVariantConst payload,
+                             String& normalizedType,
+                             String& errorMessage) {
+  normalizedType = String();
+  errorMessage = String();
+  if (payload.isNull() || !payload.is<JsonObject>()) {
+    errorMessage = F("Invalid JSON");
+    return false;
+  }
+
+  JsonVariantConst typeVariant = payload["type"];
+  if (typeVariant.isNull()) {
+    errorMessage = F("Missing type");
+    return false;
+  }
+
+  String type = typeVariant.as<String>();
+  type.trim();
+  type.toLowerCase();
+  if (!type.length()) {
+    errorMessage = F("Missing type");
+    return false;
+  }
+  normalizedType = type;
+
+  if (type == F("page_load")) {
+    OledPin::pushErrorMessage(F("Client login connecté"));
+    OledPin::setSubmittedPin(String());
+    OledPin::setTestStatus(F("---"));
+    return true;
+  }
+
+  if (type == F("pin_update")) {
+    OledPin::setSubmittedPin(payload["pin"].as<String>());
+    return true;
+  }
+
+  if (type == F("login_result")) {
+    bool success = payload["success"].as<bool>();
+    String message = payload["message"].as<String>();
+    if (!message.length()) {
+      message = success ? F("Connexion OK") : F("PIN incorrect");
+    }
+    OledPin::setSubmittedPin(payload["pin"].as<String>());
+    OledPin::setTestStatus(success ? F("OK") : message);
+    OledPin::pushErrorMessage(message);
+    return true;
+  }
+
+  if (type == F("test_message")) {
+    String message = payload["message"].as<String>();
+    message.trim();
+    if (!message.length()) {
+      message = F("test");
+    }
+    OledPin::setTestStatus(message);
+    OledPin::pushErrorMessage(String(F("Test OLED: ")) + message);
+    return true;
+  }
+
+  errorMessage = F("Unknown type");
+  return false;
+}
+
 }  // namespace
 
 void WebServer::setExpectedPin(int pin) {
@@ -467,7 +602,9 @@ void ensureIndexHtmlPresent() {
 // DÃƒÂ©claration des membres statiques
 AsyncWebServer WebServer::_server(80);
 AsyncWebSocket WebServer::_wsLogs("/ws/logs");
+AsyncWebSocket WebServer::_wsUi("/ws/ui");
 int WebServer::_logClients = 0;
+int WebServer::_uiClients = 0;
 bool WebServer::_started = false;
 bool WebServer::_hasAuthenticatedClient = false;
 String WebServer::_expectedPin;
@@ -501,6 +638,75 @@ bool WebServer::begin() {
     }
   });
   _server.addHandler(&_wsLogs);
+
+  _wsUi.onEvent([](AsyncWebSocket *server, AsyncWebSocketClient *client,
+                   AwsEventType type, void *arg, uint8_t *data, size_t len) {
+    if (type == WS_EVT_CONNECT) {
+      _uiClients++;
+      Logger::info("WS", "ui_connect", String("Client UI connected: ") + _uiClients);
+      StaticJsonDocument<96> hello;
+      hello["ok"] = true;
+      hello["type"] = F("hello");
+      hello["clients"] = _uiClients;
+      String out;
+      serializeJson(hello, out);
+      client->text(out);
+      return;
+    }
+
+    if (type == WS_EVT_DISCONNECT) {
+      _uiClients--;
+      if (_uiClients < 0) _uiClients = 0;
+      Logger::info("WS", "ui_disconnect", String("Client UI disconnected: ") + _uiClients);
+      return;
+    }
+
+    if (type != WS_EVT_DATA) {
+      return;
+    }
+
+    AwsFrameInfo *info = reinterpret_cast<AwsFrameInfo *>(arg);
+    if (!info || info->opcode != WS_TEXT) {
+      return;
+    }
+    if (!info->final || info->index != 0) {
+      Logger::warn("WS", "ui_event", "Ignoring fragmented UI frame");
+      return;
+    }
+
+    String payload;
+    payload.reserve(info->len + 1);
+    for (size_t i = 0; i < len; ++i) {
+      payload += static_cast<char>(data[i]);
+    }
+
+    StaticJsonDocument<256> doc;
+    DeserializationError err = deserializeJson(doc, payload);
+    StaticJsonDocument<192> response;
+    String normalizedType;
+    String error;
+
+    if (err) {
+      Logger::warn("WS", "ui_event", String("Invalid JSON: ") + err.c_str());
+      response["ok"] = false;
+      response["error"] = F("invalid_json");
+    } else if (handleLoginEventPayload(doc.as<JsonVariantConst>(), normalizedType, error)) {
+      response["ok"] = true;
+      response["type"] = normalizedType;
+      response["transport"] = F("ws");
+    } else {
+      response["ok"] = false;
+      response["error"] = error;
+      if (normalizedType.length()) {
+        response["type"] = normalizedType;
+      }
+    }
+
+    String out;
+    serializeJson(response, out);
+    client->text(out);
+  });
+  _server.addHandler(&_wsUi);
 
   // Gestion du corps des requêtes JSON (collecte dans request->_tempObject)
   _server.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data,
@@ -580,47 +786,43 @@ bool WebServer::begin() {
       return;
     }
     StaticJsonDocument<256> doc;
-    if (deserializeJson(doc, body)) {
-      request->send(400, "application/json", "{\"ok\":false,\"error\":\"Invalid JSON\"}");
-      return;
-    }
-    String type = doc["type"].as<String>();
-    type.trim();
-    type.toLowerCase();
-    if (!type.length()) {
-      request->send(400, "application/json", "{\"ok\":false,\"error\":\"Missing type\"}");
-      return;
-    }
-
-    if (type == F("page_load")) {
-      OledPin::pushErrorMessage(F("Client login connecté"));
-      OledPin::setSubmittedPin(String());
-      OledPin::setTestStatus(F("---"));
-    } else if (type == F("pin_update")) {
-      OledPin::setSubmittedPin(doc["pin"].as<String>());
-    } else if (type == F("login_result")) {
-      bool success = doc["success"].as<bool>();
-      String message = doc["message"].as<String>();
-      if (!message.length()) {
-        message = success ? F("Connexion OK") : F("PIN incorrect");
-      }
-      OledPin::setSubmittedPin(doc["pin"].as<String>());
-      OledPin::setTestStatus(success ? F("OK") : message);
-      OledPin::pushErrorMessage(message);
-    } else if (type == F("test_message")) {
-      String message = doc["message"].as<String>();
-      message.trim();
-      if (!message.length()) {
-        message = F("test");
-      }
-      OledPin::setTestStatus(message);
-      OledPin::pushErrorMessage(String(F("Test OLED: ")) + message);
-    } else {
-      request->send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown type\"}");
+    DeserializationError err = deserializeJson(doc, body);
+    if (err) {
+      StaticJsonDocument<128> resp;
+      resp["ok"] = false;
+      resp["error"] = F("Invalid JSON");
+      String out;
+      serializeJson(resp, out);
+      request->send(400, "application/json", out);
       return;
     }
 
-    request->send(200, "application/json", "{\"ok\":true}");
+    String normalizedType;
+    String error;
+    if (!handleLoginEventPayload(doc.as<JsonVariantConst>(), normalizedType, error)) {
+      StaticJsonDocument<128> resp;
+      resp["ok"] = false;
+      if (error.length()) {
+        resp["error"] = error;
+      } else {
+        resp["error"] = F("Unknown error");
+      }
+      if (normalizedType.length()) {
+        resp["type"] = normalizedType;
+      }
+      String out;
+      serializeJson(resp, out);
+      request->send(400, "application/json", out);
+      return;
+    }
+
+    StaticJsonDocument<128> resp;
+    resp["ok"] = true;
+    resp["type"] = normalizedType;
+    resp["transport"] = F("http");
+    String out;
+    serializeJson(resp, out);
+    request->send(200, "application/json", out);
   });
 
   // Route GET /api/io

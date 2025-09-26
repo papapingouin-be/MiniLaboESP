@@ -274,6 +274,13 @@ bool startAccessPointVerbose() {
   int channel = constrain(g_accessPointChannel, 1, 13);
   bool hidden = g_accessPointHidden;
 
+  bool apConfigured = WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet);
+  if (!apConfigured) {
+    Serial.println(F("[MiniLabo] Échec de la configuration IP de l'AP"));
+    Logger::warn("NET", "AP", "softAPConfig failed (pre-start)");
+    enqueueOledMessage(F("softAP config failed"));
+  }
+
   if (!WiFi.softAP(g_accessPointSsid.c_str(), password, channel, hidden)) {
     Serial.println(F("[MiniLabo] Impossible de démarrer le point d'accès"));
     g_status.wifiLine = F("WiFi: ERROR");
@@ -282,10 +289,11 @@ bool startAccessPointVerbose() {
     return false;
   }
 
-  if (!WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet)) {
-    Serial.println(F("[MiniLabo] Échec de la configuration IP de l'AP"));
-    Logger::warn("NET", "AP", "softAPConfig failed");
-    enqueueOledMessage(F("softAP config failed"));
+  if (!apConfigured) {
+    if (!WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet)) {
+      Logger::warn("NET", "AP", "softAPConfig failed");
+      enqueueOledMessage(F("softAP config failed"));
+    }
   }
 
   Serial.print(F("[MiniLabo] Point d'accès démarré : "));
@@ -311,6 +319,12 @@ bool startAccessPointSilent() {
   int channel = constrain(g_accessPointChannel, 1, 13);
   bool hidden = g_accessPointHidden;
 
+  bool apConfigured = WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet);
+  if (!apConfigured) {
+    Logger::warn("NET", "AP", "softAPConfig failed (pre-start)");
+    enqueueOledMessage(F("softAP config failed"));
+  }
+
   if (!WiFi.softAP(g_accessPointSsid.c_str(), password, channel, hidden)) {
     g_status.wifiLine = F("WiFi: ERROR");
     g_status.wifiHardware = F("AP init failed");
@@ -318,9 +332,11 @@ bool startAccessPointSilent() {
     return false;
   }
 
-  if (!WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet)) {
-    Logger::warn("NET", "AP", "softAPConfig failed");
-    enqueueOledMessage(F("softAP config failed"));
+  if (!apConfigured) {
+    if (!WiFi.softAPConfig(kAccessPointIp, kAccessPointGateway, kAccessPointSubnet)) {
+      Logger::warn("NET", "AP", "softAPConfig failed");
+      enqueueOledMessage(F("softAP config failed"));
+    }
   }
 
   g_status.wifiLine = String(F("WiFi: AP ")) + g_accessPointSsid;
@@ -370,10 +386,17 @@ void setup() {
   Serial.println(F("[MiniLabo] Booting..."));
 
   if (!LittleFS.begin()) {
-    Serial.println(F("[MiniLabo] Failed to mount LittleFS"));
-    return;
+    Serial.println(F("[MiniLabo] Failed to mount LittleFS, formatting..."));
+    if (!LittleFS.format()) {
+      Serial.println(F("[MiniLabo] LittleFS format failed"));
+      return;
+    }
+    if (!LittleFS.begin()) {
+      Serial.println(F("[MiniLabo] LittleFS mount failed after format"));
+      return;
+    }
   }
-  Serial.println(F("[MiniLabo] LittleFS mounted"));
+  Serial.println(F("[MiniLabo] LittleFS ready"));
 
   ConfigStore::begin();
 

@@ -139,6 +139,7 @@
       <button type="button" onclick="backspacePin()">⌫</button>
     </div>
     <button type="button" onclick="login()">Se connecter</button>
+    <button type="button" onclick="triggerOledTest()" style="margin-top:0.5rem;">Test OLED</button>
     <p id="loginStatus" style="color:red;"></p>
   </div>
   <div id="dashboard">
@@ -266,6 +267,15 @@
     notifyPinChange();
 
     // Fonction de connexion : envoie le PIN au serveur et gère la réponse
+    function triggerOledTest() {
+      sendLoginEvent('test_message', {message:'test'});
+      if (typeof appendDebug === 'function') {
+        appendDebug('test_message envoyé');
+      } else {
+        console.debug('test_message envoyé');
+      }
+    }
+
     function login() {
       const pin = sanitizePin(pinInput.value);
       pinInput.value = pin;

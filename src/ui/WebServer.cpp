@@ -70,6 +70,7 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
       <button type="button" onclick="backspacePin()">⌫</button>
     </div>
     <button type="button" onclick="login()">Se connecter</button>
+    <button type="button" onclick="triggerOledTest()" style="margin-top:0.6rem;">Test OLED</button>
     <p id="loginStatus" style="color:red;"></p>
     <a href="#" id="debugToggle" onclick="toggleDebug(event)">Afficher le debug</a>
     <div id="debugPanel">
@@ -234,6 +235,13 @@ constexpr const char kDefaultIndexHtml[] PROGMEM = R"rawliteral(<!DOCTYPE html>
     pinInput.focus();
     sendLoginEvent('page_load');
     notifyPinChange();
+
+    function triggerOledTest() {
+      sendLoginEvent('test_message', {message:'test'});
+      if (typeof appendDebug === 'function') {
+        appendDebug('test_message envoyé');
+      }
+    }
 
     function login() {
       const pin = sanitizePin(pinInput.value);
@@ -599,6 +607,14 @@ bool WebServer::begin() {
       OledPin::setSubmittedPin(doc["pin"].as<String>());
       OledPin::setTestStatus(success ? F("OK") : message);
       OledPin::pushErrorMessage(message);
+    } else if (type == F("test_message")) {
+      String message = doc["message"].as<String>();
+      message.trim();
+      if (!message.length()) {
+        message = F("test");
+      }
+      OledPin::setTestStatus(message);
+      OledPin::pushErrorMessage(String(F("Test OLED: ")) + message);
     } else {
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"Unknown type\"}");
       return;

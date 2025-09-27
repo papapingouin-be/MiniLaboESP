@@ -484,12 +484,12 @@ String normalizePin(const String& value) {
   return digits;
 }
 
-bool handleLoginEventPayload(JsonVariantConst payload,
+bool handleLoginEventPayload(JsonObjectConst payload,
                              String& normalizedType,
                              String& errorMessage) {
   normalizedType = String();
   errorMessage = String();
-  if (payload.isNull() || !payload.is<JsonObject>()) {
+  if (!payload) {
     errorMessage = F("Invalid JSON");
     return false;
   }
@@ -700,21 +700,24 @@ bool WebServer::begin() {
       response["ok"] = false;
       response["error"] = F("invalid_json");
       response["details"] = err.c_str();
-    } else if (!doc.is<JsonObject>()) {
-      Logger::warn("WS", "ui_event",
-                   String("Invalid JSON root type payload=") + payload);
-      response["ok"] = false;
-      response["error"] = F("invalid_json");
-      response["details"] = F("root_not_object");
-    } else if (handleLoginEventPayload(doc.as<JsonVariantConst>(), normalizedType, error)) {
-      response["ok"] = true;
-      response["type"] = normalizedType;
-      response["transport"] = F("ws");
     } else {
-      response["ok"] = false;
-      response["error"] = error;
-      if (normalizedType.length()) {
+      JsonObjectConst root = doc.as<JsonObjectConst>();
+      if (!root) {
+        Logger::warn("WS", "ui_event",
+                     String("Invalid JSON root type payload=") + payload);
+        response["ok"] = false;
+        response["error"] = F("invalid_json");
+        response["details"] = F("root_not_object");
+      } else if (handleLoginEventPayload(root, normalizedType, error)) {
+        response["ok"] = true;
         response["type"] = normalizedType;
+        response["transport"] = F("ws");
+      } else {
+        response["ok"] = false;
+        response["error"] = error;
+        if (normalizedType.length()) {
+          response["type"] = normalizedType;
+        }
       }
     }
 
@@ -821,8 +824,9 @@ bool WebServer::begin() {
     String normalizedType;
     String error;
     bool handled = false;
-    if (doc.is<JsonObject>()) {
-      handled = handleLoginEventPayload(doc.as<JsonVariantConst>(), normalizedType, error);
+    JsonObjectConst root = doc.as<JsonObjectConst>();
+    if (root) {
+      handled = handleLoginEventPayload(root, normalizedType, error);
     } else {
       error = F("Invalid JSON");
     }

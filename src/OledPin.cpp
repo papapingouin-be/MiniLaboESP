@@ -70,6 +70,9 @@ namespace {
       char c = value.charAt(i);
       if (c >= '0' && c <= '9') {
         digits += c;
+        if (digits.length() == 4) {
+          valid = true;
+        }
       }
     }
 
@@ -77,10 +80,11 @@ namespace {
       return String(kUnknownPin);
     }
 
-    while (digits.length() < 4) {
-      digits = String('0') + digits;
+    if (!valid) {
+      while (digits.length() < 4) {
+        digits = String('0') + digits;
+      }
     }
-    valid = true;
     return digits;
   }
 

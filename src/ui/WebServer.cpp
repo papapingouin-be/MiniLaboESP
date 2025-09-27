@@ -680,16 +680,32 @@ bool WebServer::begin() {
       payload += static_cast<char>(data[i]);
     }
 
-    StaticJsonDocument<256> doc;
-    DeserializationError err = deserializeJson(doc, payload);
+    size_t docCapacity = payload.length() + 128;
+    if (docCapacity < 256) {
+      docCapacity = 256;
+    }
+    DynamicJsonDocument doc(docCapacity);
     StaticJsonDocument<192> response;
     String normalizedType;
     String error;
 
+    DeserializationError err = deserializeJson(doc, payload.c_str(), payload.length());
     if (err) {
-      Logger::warn("WS", "ui_event", String("Invalid JSON: ") + err.c_str());
+      String truncated = payload;
+      if (truncated.length() > 96) {
+        truncated = truncated.substring(0, 96) + F("...");
+      }
+      Logger::warn("WS", "ui_event",
+                   String("Invalid JSON: ") + err.c_str() + F(" payload=") + truncated);
       response["ok"] = false;
       response["error"] = F("invalid_json");
+      response["details"] = err.c_str();
+    } else if (!doc.is<JsonObject>()) {
+      Logger::warn("WS", "ui_event",
+                   String("Invalid JSON root type payload=") + payload);
+      response["ok"] = false;
+      response["error"] = F("invalid_json");
+      response["details"] = F("root_not_object");
     } else if (handleLoginEventPayload(doc.as<JsonVariantConst>(), normalizedType, error)) {
       response["ok"] = true;
       response["type"] = normalizedType;
@@ -785,12 +801,17 @@ bool WebServer::begin() {
       request->send(400, "application/json", "{\"ok\":false,\"error\":\"Missing body\"}");
       return;
     }
-    StaticJsonDocument<256> doc;
-    DeserializationError err = deserializeJson(doc, body);
+    size_t docCapacity = body.length() + 128;
+    if (docCapacity < 256) {
+      docCapacity = 256;
+    }
+    DynamicJsonDocument doc(docCapacity);
+    DeserializationError err = deserializeJson(doc, body.c_str(), body.length());
     if (err) {
       StaticJsonDocument<128> resp;
       resp["ok"] = false;
       resp["error"] = F("Invalid JSON");
+      resp["details"] = err.c_str();
       String out;
       serializeJson(resp, out);
       request->send(400, "application/json", out);
@@ -799,7 +820,13 @@ bool WebServer::begin() {
 
     String normalizedType;
     String error;
-    if (!handleLoginEventPayload(doc.as<JsonVariantConst>(), normalizedType, error)) {
+    bool handled = false;
+    if (doc.is<JsonObject>()) {
+      handled = handleLoginEventPayload(doc.as<JsonVariantConst>(), normalizedType, error);
+    } else {
+      error = F("Invalid JSON");
+    }
+    if (!handled) {
       StaticJsonDocument<128> resp;
       resp["ok"] = false;
       if (error.length()) {
